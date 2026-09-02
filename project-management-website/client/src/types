@@ -1,0 +1,52 @@
+// This file contains TypeScript type definitions and interfaces used throughout the client application.
+
+export interface Employee {
+    id: number;
+    name: string;
+    position: string;
+    dateOfJoining: Date;
+    dateOfLeaving?: Date;
+    salary: number;
+}
+
+export interface Client {
+    id: number;
+    name: string;
+    contactPerson: string;
+    email: string;
+    phone: string;
+}
+
+export interface Project {
+    id: number;
+    name: string;
+    clientId: number;
+    startDate: Date;
+    endDate?: Date;
+    budget: number;
+    expenses: number;
+}
+
+export interface Quotation {
+    id: number;
+    projectId: number;
+    amount: number;
+    dateIssued: Date;
+    validUntil: Date;
+}
+
+export interface Invoice {
+    id: number;
+    projectId: number;
+    amount: number;
+    dateIssued: Date;
+    dueDate: Date;
+    status: 'Paid' | 'Pending' | 'Overdue';
+}
+
+export interface Report {
+    id: number;
+    title: string;
+    content: string;
+    createdDate: Date;
+}

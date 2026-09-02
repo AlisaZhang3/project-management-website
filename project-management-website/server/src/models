@@ -1,0 +1,47 @@
+// This file defines the data models for the project management website, including Employee, Client, Project, Quotation, and Invoice schemas.
+
+import mongoose from 'mongoose';
+
+const employeeSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    position: { type: String, required: true },
+    salary: { type: Number, required: true },
+    dateOfJoining: { type: Date, required: true },
+    dateOfLeaving: { type: Date },
+});
+
+const clientSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    contactInfo: { type: String, required: true },
+    projects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
+});
+
+const projectSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    client: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+    startDate: { type: Date, required: true },
+    endDate: { type: Date },
+    budget: { type: Number, required: true },
+    profit: { type: Number },
+});
+
+const quotationSchema = new mongoose.Schema({
+    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
+    amount: { type: Number, required: true },
+    date: { type: Date, required: true },
+});
+
+const invoiceSchema = new mongoose.Schema({
+    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
+    amount: { type: Number, required: true },
+    date: { type: Date, required: true },
+    status: { type: String, enum: ['Paid', 'Pending', 'Overdue'], required: true },
+});
+
+const Employee = mongoose.model('Employee', employeeSchema);
+const Client = mongoose.model('Client', clientSchema);
+const Project = mongoose.model('Project', projectSchema);
+const Quotation = mongoose.model('Quotation', quotationSchema);
+const Invoice = mongoose.model('Invoice', invoiceSchema);
+
+export { Employee, Client, Project, Quotation, Invoice };

@@ -1,0 +1,50 @@
+import React, { useEffect, useState } from 'react';
+
+const Clients = () => {
+    const [clients, setClients] = useState([]);
+
+    useEffect(() => {
+        // Fetch clients from the API
+        const fetchClients = async () => {
+            try {
+                const response = await fetch('/api/clients');
+                const data = await response.json();
+                setClients(data);
+            } catch (error) {
+                console.error('Error fetching clients:', error);
+            }
+        };
+
+        fetchClients();
+    }, []);
+
+    return (
+        <div>
+            <h1>Client Management</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {clients.map(client => (
+                        <tr key={client.id}>
+                            <td>{client.id}</td>
+                            <td>{client.name}</td>
+                            <td>{client.email}</td>
+                            <td>{client.phone}</td>
+                            <td>{client.address}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+export default Clients;

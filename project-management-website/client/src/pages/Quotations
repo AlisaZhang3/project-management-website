@@ -1,0 +1,71 @@
+import React, { useState, useEffect } from 'react';
+import { fetchQuotations, createQuotation } from '../../services/quotationService';
+
+const Quotations = () => {
+    const [quotations, setQuotations] = useState([]);
+    const [newQuotation, setNewQuotation] = useState({ project: '', client: '', amount: 0 });
+
+    useEffect(() => {
+        const loadQuotations = async () => {
+            const data = await fetchQuotations();
+            setQuotations(data);
+        };
+        loadQuotations();
+    }, []);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setNewQuotation({ ...newQuotation, [name]: value });
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        await createQuotation(newQuotation);
+        setNewQuotation({ project: '', client: '', amount: 0 });
+        const data = await fetchQuotations();
+        setQuotations(data);
+    };
+
+    return (
+        <div>
+            <h1>Quotations</h1>
+            <form onSubmit={handleSubmit}>
+                <input
+                    type="text"
+                    name="project"
+                    value={newQuotation.project}
+                    onChange={handleChange}
+                    placeholder="Project Name"
+                    required
+                />
+                <input
+                    type="text"
+                    name="client"
+                    value={newQuotation.client}
+                    onChange={handleChange}
+                    placeholder="Client Name"
+                    required
+                />
+                <input
+                    type="number"
+                    name="amount"
+                    value={newQuotation.amount}
+                    onChange={handleChange}
+                    placeholder="Amount"
+                    required
+                />
+                <button type="submit">Create Quotation</button>
+            </form>
+            <h2>Existing Quotations</h2>
+            <ul>
+                {quotations.map((quotation) => (
+                    <li key={quotation.id}>
+                        {quotation.project} - {quotation.client} - ${quotation.amount}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+export default Quotations;

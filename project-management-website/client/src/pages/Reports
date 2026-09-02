@@ -1,0 +1,13 @@
+import React from 'react';
+
+const Reports: React.FC = () => {
+    return (
+        <div>
+            <h1>Reports</h1>
+            <p>This page will display various reports related to projects, employees, and finances.</p>
+            {/* Additional report components and logic will be added here */}
+        </div>
+    );
+};
+
+export default Reports;

@@ -1,0 +1,59 @@
+import React, { useEffect, useState } from 'react';
+import { Employee } from '../../types/Employee';
+import { fetchEmployees, updateEmployee } from '../../services/employeeService';
+
+const Employees: React.FC = () => {
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadEmployees = async () => {
+            try {
+                const data = await fetchEmployees();
+                setEmployees(data);
+            } catch (err) {
+                setError('Failed to load employees');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadEmployees();
+    }, []);
+
+    const handleUpdate = async (employee: Employee) => {
+        try {
+            await updateEmployee(employee);
+            setEmployees((prev) =>
+                prev.map((emp) => (emp.id === employee.id ? employee : emp))
+            );
+        } catch (err) {
+            setError('Failed to update employee');
+        }
+    };
+
+    if (loading) {
+        return <div>Loading...</div>;
+    }
+
+    if (error) {
+        return <div>{error}</div>;
+    }
+
+    return (
+        <div>
+            <h1>Employee Directory</h1>
+            <ul>
+                {employees.map((employee) => (
+                    <li key={employee.id}>
+                        {employee.name} - {employee.position} - {employee.salary}
+                        <button onClick={() => handleUpdate(employee)}>Update</button>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+export default Employees;
