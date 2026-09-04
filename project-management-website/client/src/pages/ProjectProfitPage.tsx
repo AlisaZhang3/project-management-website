@@ -1,6 +1,6 @@
 import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Employee } from './EmployeesPage';
+import { Employee, getSalaryCurrency } from './EmployeesPage';
 import { Project } from './ProjectsPage';
 
 interface ProfitRow extends Employee {
@@ -18,17 +18,27 @@ type NumericField = 'hourlyRate' | 'monthlyWorkingHours' | 'monthlyBill' | 'mont
 const number = (value: unknown) => Number(value) || 0;
 const calculateNR = (bill: number) => bill * (1 - 0.02 - 0.05) * (1 - 0.00471);
 const calculateGP = (nr: number, cost: number) => nr ? ((nr - cost) / nr) * 100 : 0;
-const employeeMonthlySalaryUSD = (employee: Employee) => /india|inida/i.test(employee.region)
-    ? number(employee.salary) * 100000 / 12 / 86.5
-    : number(employee.salary) / 6.8;
+const PHP_PER_USD = 58.5;
+const employeeMonthlySalaryUSD = (employee: Employee) => {
+    const currency = getSalaryCurrency(employee.region);
+    if (currency === 'LPA') return number(employee.salary) * 100000 / 12 / 86.5;
+    if (currency === 'CNY') return number(employee.salary) / 6.8;
+    if (currency === 'PHP') return number(employee.salary) / PHP_PER_USD;
+    return number(employee.salary);
+};
 const employeeMonthlyCost = (employee: Employee) => {
     const reuseRatio = employee.isShared ? Math.min(100, Math.max(0, number(employee.sharedRatio))) / 100 : 0;
     return employeeMonthlySalaryUSD(employee) * (1 - reuseRatio);
 };
 const costDetails = (employee: Employee) => {
-    const salaryFormula = /india|inida/i.test(employee.region)
+    const currency = getSalaryCurrency(employee.region);
+    const salaryFormula = currency === 'LPA'
         ? `${employee.salary || 0} LPA × 100,000 ÷ 12 ÷ 86.5`
-        : `¥${employee.salary || 0} ÷ 6.8`;
+        : currency === 'CNY'
+            ? `¥${employee.salary || 0} ÷ 6.8`
+            : currency === 'PHP'
+                ? `₱${employee.salary || 0} ÷ ${PHP_PER_USD}`
+                : `$${employee.salary || 0}`;
     return employee.isShared
         ? `${salaryFormula} × (1 - ${employee.sharedRatio || 0}%)`
         : salaryFormula;
@@ -131,7 +141,7 @@ const ProjectProfitPage: React.FC = () => {
             </header>
             <section className="employees-heading profit-heading">
                 <div><p className="eyebrow">PROJECT PROFITABILITY</p><h1>{project?.name || 'Project Profitability'}</h1><p className="subtitle">{project ? `${project.projectCode} · PM ${project.pm}` : 'Loading project...'}</p></div>
-                <div className="profit-heading-actions"><div className="formula-note"><strong>All amounts are in USD</strong><span>Monthly NR = Monthly Bill × 93% × 99.529%</span><span>CNY/USD 6.8 · INR/USD 86.5</span></div>{!!rows.length && <button className="primary-button" disabled={saving} onClick={saveAll}>{saving ? 'Saving…' : 'Save All Changes'}</button>}</div>
+                <div className="profit-heading-actions"><div className="formula-note"><strong>All amounts are in USD</strong><span>Monthly NR = Monthly Bill × 93% × 99.529%</span><span>CNY/USD 6.8 · INR/USD 86.5 · PHP/USD {PHP_PER_USD}</span></div>{!!rows.length && <button className="primary-button" disabled={saving} onClick={saveAll}>{saving ? 'Saving…' : 'Save All Changes'}</button>}</div>
             </section>
             <section className="profit-content">
                 {message && <div className={`notice ${message.includes('saved') ? 'success' : 'error'}`}>{message}</div>}

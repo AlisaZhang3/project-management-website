@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Link, Route, Switch } from 'react-router-dom';
 import EmployeesPage from './pages/EmployeesPage';
+import EmployeeDetailPage from './pages/EmployeeDetailPage';
 import ProjectProfitPage from './pages/ProjectProfitPage';
 import ProjectsPage from './pages/ProjectsPage';
 import './index.css';
@@ -52,6 +53,7 @@ const Home: React.FC = () => {
 const App: React.FC = () => (
     <BrowserRouter>
         <Switch>
+            <Route path="/employees/:id" component={EmployeeDetailPage} />
             <Route path="/employees" component={EmployeesPage} />
             <Route path="/projects/:id/profit" component={ProjectProfitPage} />
             <Route path="/projects" component={ProjectsPage} />

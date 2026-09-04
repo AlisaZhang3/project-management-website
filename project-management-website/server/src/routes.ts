@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import {
     clientController,
     employeeController,
@@ -6,6 +6,7 @@ import {
     projectController,
     quotationController,
 } from './controllers';
+import { removeC2CContract, removeContractFile, uploadC2CContract, viewC2CContract } from './c2cContracts';
 
 const router = Router();
 
@@ -15,9 +16,15 @@ router.get('/health', (_req, res) => {
 
 router.get('/employees', employeeController.getAll);
 router.post('/employees', employeeController.create);
+router.put('/employees/:id/c2c-contract', express.raw({ type: 'application/pdf', limit: '20mb' }), uploadC2CContract);
+router.get('/employees/:id/c2c-contract', viewC2CContract);
+router.delete('/employees/:id/c2c-contract', removeC2CContract);
 router.get('/employees/:id', employeeController.getById);
 router.put('/employees/:id', employeeController.update);
-router.delete('/employees/:id', employeeController.remove);
+router.delete('/employees/:id', (req, res) => {
+    removeContractFile(Number(req.params.id));
+    employeeController.remove(req, res);
+});
 
 router.get('/clients', clientController.getAll);
 router.post('/clients', clientController.create);

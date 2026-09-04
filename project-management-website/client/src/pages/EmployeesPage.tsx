@@ -16,6 +16,9 @@ export interface Employee {
     sharedRatio: number;
     isContractor: boolean;
     maximumEndDate: string;
+    hasC2C: boolean;
+    c2cContractName?: string | null;
+    c2cContractUploadedAt?: string | null;
     hourlyRate?: number;
     monthlyWorkingHours?: number;
     monthlyBill?: number;
@@ -25,7 +28,7 @@ export interface Employee {
     comment?: string;
 }
 
-type EmployeeForm = Omit<Employee, 'id' | 'hourlyRate' | 'monthlyWorkingHours' | 'monthlyBill' | 'monthlyNR' | 'monthlyCost' | 'gp2' | 'comment'>;
+type EmployeeForm = Omit<Employee, 'id' | 'c2cContractName' | 'c2cContractUploadedAt' | 'hourlyRate' | 'monthlyWorkingHours' | 'monthlyBill' | 'monthlyNR' | 'monthlyCost' | 'gp2' | 'comment'>;
 
 const emptyForm: EmployeeForm = {
     employeeNumber: '',
@@ -40,6 +43,40 @@ const emptyForm: EmployeeForm = {
     sharedRatio: 0,
     isContractor: false,
     maximumEndDate: '',
+    hasC2C: false,
+};
+
+export type SalaryCurrency = 'CNY' | 'LPA' | 'PHP' | 'USD';
+
+export const getSalaryCurrency = (region: string): SalaryCurrency => {
+    const value = region.trim().toLowerCase();
+    if (/india|inida|印度/.test(value)) return 'LPA';
+    if (/philippines|philippine|pilipinas|菲律宾/.test(value)) return 'PHP';
+    if (/china|chinese|中国|中国大陆|mainland|beijing|北京|shanghai|上海|chengdu|成都|xian|xi'an|西安|shenzhen|深圳|guangzhou|广州|hangzhou|杭州|nanjing|南京|wuhan|武汉|suzhou|苏州|tianjin|天津|chongqing|重庆/.test(value)) return 'CNY';
+    return 'USD';
+};
+
+const salaryLabel = (region: string) => {
+    const currency = getSalaryCurrency(region);
+    if (currency === 'LPA') return 'Annual Salary (LPA)';
+    return `Monthly Salary (${currency})`;
+};
+
+const salaryPlaceholder = (region: string) => {
+    const currency = getSalaryCurrency(region);
+    if (currency === 'LPA') return 'e.g. 12 LPA';
+    if (currency === 'PHP') return 'e.g. 60000 PHP';
+    if (currency === 'USD') return 'e.g. 3000 USD';
+    return 'e.g. 20000 CNY';
+};
+
+const displaySalary = (employee: Employee) => {
+    const salary = (employee.salary || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    const currency = getSalaryCurrency(employee.region);
+    if (currency === 'LPA') return `${salary} LPA/year`;
+    if (currency === 'CNY') return `¥${salary}/month`;
+    if (currency === 'PHP') return `₱${salary}/month`;
+    return `$${salary}/month`;
 };
 
 const EmployeesPage: React.FC = () => {
@@ -50,6 +87,7 @@ const EmployeesPage: React.FC = () => {
     const [projectsExpanded, setProjectsExpanded] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [c2cContract, setC2CContract] = useState<File | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const location = useLocation();
@@ -96,12 +134,14 @@ const EmployeesPage: React.FC = () => {
             setShowForm(false);
             setEditingId(null);
             setForm(emptyForm);
+            setC2CContract(null);
             return;
         }
         if (!showForm && selectedProject !== 'all') {
             setForm((current) => ({ ...current, projectId: Number(selectedProject) }));
         }
         setEditingId(null);
+        setC2CContract(null);
         setShowForm(true);
     };
 
@@ -119,7 +159,9 @@ const EmployeesPage: React.FC = () => {
             sharedRatio: employee.sharedRatio || 0,
             isContractor: employee.isContractor || false,
             maximumEndDate: employee.maximumEndDate || '',
+            hasC2C: employee.hasC2C || false,
         });
+        setC2CContract(null);
         setEditingId(employee.id);
         setShowForm(true);
         setError('');
@@ -129,6 +171,15 @@ const EmployeesPage: React.FC = () => {
     const submitEmployee = async (event: FormEvent) => {
         event.preventDefault();
         setError('');
+        const existingEmployee = editingId ? employees.find(({ id }) => id === editingId) : undefined;
+        if (form.hasC2C && !c2cContract && !existingEmployee?.c2cContractName) {
+            setError('Please select the signed C2C contract in PDF format.');
+            return;
+        }
+        if (c2cContract && (c2cContract.type !== 'application/pdf' || !c2cContract.name.toLowerCase().endsWith('.pdf'))) {
+            setError('The C2C contract must be a PDF file.');
+            return;
+        }
         try {
             const response = await fetch(editingId ? `/api/employees/${editingId}` : '/api/employees', {
                 method: editingId ? 'PUT' : 'POST',
@@ -138,20 +189,54 @@ const EmployeesPage: React.FC = () => {
                     sharedProject: form.isShared ? form.sharedProject.trim() : '',
                     sharedRatio: form.isShared ? form.sharedRatio : 0,
                     maximumEndDate: form.isContractor ? form.maximumEndDate : '',
+                    hasC2C: c2cContract ? Boolean(existingEmployee?.c2cContractName) : form.hasC2C,
                 }),
             });
             if (!response.ok) throw new Error(editingId ? 'Failed to update employee' : 'Failed to add employee');
-            const employee: Employee = await response.json();
+            let employee: Employee = await response.json();
+
+            if (form.hasC2C && c2cContract) {
+                const contractResponse = await fetch(`/api/employees/${employee.id}/c2c-contract`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/pdf', 'X-File-Name': encodeURIComponent(c2cContract.name) },
+                    body: c2cContract,
+                });
+                if (!contractResponse.ok) throw new Error('Employee was saved, but the C2C contract upload failed');
+                employee = await contractResponse.json();
+            } else if (!form.hasC2C && existingEmployee?.c2cContractName) {
+                const contractResponse = await fetch(`/api/employees/${employee.id}/c2c-contract`, { method: 'DELETE' });
+                if (!contractResponse.ok) throw new Error('Employee was saved, but the C2C contract could not be removed');
+                employee = await contractResponse.json();
+            }
+
             setEmployees((current) => editingId
                 ? current.map((item) => item.id === employee.id ? employee : item)
                 : [...current, employee]
             );
             setSelectedProject(String(employee.projectId));
             setForm(emptyForm);
+            setC2CContract(null);
             setEditingId(null);
             setShowForm(false);
         } catch (err) {
             setError(err instanceof Error ? err.message : editingId ? 'Failed to update employee' : 'Failed to add employee');
+        }
+    };
+
+    const deleteEmployee = async (employee: Employee) => {
+        if (!window.confirm(`Delete employee “${employee.name}” (${employee.employeeNumber})? This action cannot be undone.`)) return;
+        setError('');
+        try {
+            const response = await fetch(`/api/employees/${employee.id}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error('Failed to delete employee');
+            setEmployees((current) => current.filter(({ id }) => id !== employee.id));
+            if (editingId === employee.id) {
+                setEditingId(null);
+                setShowForm(false);
+                setForm(emptyForm);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to delete employee');
         }
     };
 
@@ -189,8 +274,8 @@ const EmployeesPage: React.FC = () => {
                     <label>Project<select required value={form.projectId || ''} onChange={(e) => updateField('projectId', Number(e.target.value))}><option value="" disabled>Select a project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.projectCode} · {project.name}</option>)}</select></label>
                     <label>Employee ID<input required value={form.employeeNumber} onChange={(e) => updateField('employeeNumber', e.target.value)} placeholder="e.g. E001" /></label>
                     <label>Name<input required value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="Employee name" /></label>
-                    <label>Region<input required value={form.region} onChange={(e) => updateField('region', e.target.value)} placeholder="e.g. China or India" /></label>
-                    <label>{/india|inida/i.test(form.region) ? 'Annual Salary (LPA)' : 'Monthly Salary (CNY)'}<input required type="number" min="0" step="0.01" value={form.salary || ''} onChange={(e) => updateField('salary', Number(e.target.value))} placeholder={/india|inida/i.test(form.region) ? 'e.g. 12 LPA' : 'e.g. 20000'} /></label>
+                    <label>Country / Region<input required list="employee-regions" value={form.region} onChange={(e) => updateField('region', e.target.value)} placeholder="e.g. China, India, Philippines, USA" /><datalist id="employee-regions"><option value="China" /><option value="India" /><option value="Philippines" /><option value="USA" /></datalist></label>
+                    <label>{salaryLabel(form.region)}<input required type="number" min="0" step="0.01" value={form.salary || ''} onChange={(e) => updateField('salary', Number(e.target.value))} placeholder={salaryPlaceholder(form.region)} /></label>
                     <label>Join Date<input required type="date" value={form.joinDate} onChange={(e) => updateField('joinDate', e.target.value)} /></label>
                     <label>Leave Date<input type="date" min={form.joinDate} value={form.leaveDate} onChange={(e) => updateField('leaveDate', e.target.value)} /></label>
                     <label className="check-field"><input type="checkbox" checked={form.isShared} onChange={(e) => updateField('isShared', e.target.checked)} /><span>Shared Resource</span></label>
@@ -198,6 +283,8 @@ const EmployeesPage: React.FC = () => {
                     {form.isShared && <label>Shared Ratio (%)<input required type="number" min="1" max="100" value={form.sharedRatio || ''} onChange={(e) => updateField('sharedRatio', Number(e.target.value))} /></label>}
                     <label className="check-field"><input type="checkbox" checked={form.isContractor} onChange={(e) => updateField('isContractor', e.target.checked)} /><span>Contractor</span></label>
                     {form.isContractor && <label>Maximum End Date<input required type="date" min={form.joinDate} value={form.maximumEndDate} onChange={(e) => updateField('maximumEndDate', e.target.value)} /></label>}
+                    <label className="check-field"><input type="checkbox" checked={form.hasC2C} onChange={(e) => { updateField('hasC2C', e.target.checked); if (!e.target.checked) setC2CContract(null); }} /><span>C2C Agreement Signed</span></label>
+                    {form.hasC2C && <label className="contract-upload">C2C Contract (PDF)<input required={!editingId || !employees.find(({ id }) => id === editingId)?.c2cContractName} type="file" accept="application/pdf,.pdf" onChange={(e) => setC2CContract(e.target.files?.[0] || null)} />{editingId && employees.find(({ id }) => id === editingId)?.c2cContractName && !c2cContract && <small>Current: {employees.find(({ id }) => id === editingId)?.c2cContractName}. Select a PDF to replace it.</small>}</label>}
                     <div className="form-actions"><button type="submit" className="primary-button">{editingId ? 'Save Changes' : 'Save Employee'}</button></div>
                 </form>
             )}
@@ -225,9 +312,9 @@ const EmployeesPage: React.FC = () => {
                     {loading ? <div className="empty-state">Loading employees…</div> : !projects.length ? null : visibleEmployees.length === 0 ? (
                         <div className="empty-state"><span>👥</span><h3>No Employees Yet</h3><p>Click “Add Employee” to add the first employee to this project.</p></div>
                     ) : (
-                        <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee ID</th><th>Name</th><th>Region</th><th>Salary</th><th>Join Date</th><th>Leave Date</th><th>Project</th><th>Shared</th><th>Shared Project</th><th>Shared Ratio</th><th>Contractor</th><th>Maximum End Date</th><th>Action</th></tr></thead><tbody>
+                        <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee ID</th><th>Name</th><th>Region</th><th>Salary</th><th>Join Date</th><th>Leave Date</th><th>Project</th><th>Shared</th><th>Shared Project</th><th>Shared Ratio</th><th>Contractor</th><th>Maximum End Date</th><th>C2C</th><th>Action</th></tr></thead><tbody>
                             {visibleEmployees.map((employee) => <tr className={contractorStatus(employee)?.urgent ? 'contractor-expiring' : ''} key={employee.id}>
-                                <td><strong>{employee.employeeNumber}</strong></td><td>{employee.name}</td><td>{employee.region}</td><td>{/india|inida/i.test(employee.region) ? `${employee.salary || 0} LPA` : `¥${(employee.salary || 0).toLocaleString()}/month`}</td><td>{employee.joinDate}</td><td>{employee.leaveDate || '—'}</td><td><span className="project-tag">{getProject(employee.projectId)?.name || 'Unknown Project'}</span></td><td><span className={`reuse-badge ${employee.isShared ? 'yes' : ''}`}>{employee.isShared ? 'Yes' : 'No'}</span></td><td>{employee.isShared ? employee.sharedProject || '—' : '—'}</td><td>{employee.isShared ? `${employee.sharedRatio}%` : '—'}</td><td><span className={`reuse-badge ${employee.isContractor ? 'contractor' : ''}`}>{employee.isContractor ? 'Yes' : 'No'}</span></td><td>{employee.isContractor ? <span className={contractorStatus(employee)?.urgent ? 'expiry-date' : ''}>{employee.maximumEndDate || '—'}{contractorStatus(employee) && <small>{contractorStatus(employee)?.text}</small>}</span> : '—'}</td><td><button className="edit-button" onClick={() => editEmployee(employee)}>Edit</button></td>
+                                <td><Link className="employee-detail-link" to={`/employees/${employee.id}`}><strong>{employee.employeeNumber}</strong></Link></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}>{employee.name}</Link></td><td>{employee.region}</td><td>{displaySalary(employee)}</td><td>{employee.joinDate}</td><td>{employee.leaveDate || '—'}</td><td><span className="project-tag">{getProject(employee.projectId)?.name || 'Unknown Project'}</span></td><td><span className={`reuse-badge ${employee.isShared ? 'yes' : ''}`}>{employee.isShared ? 'Yes' : 'No'}</span></td><td>{employee.isShared ? employee.sharedProject || '—' : '—'}</td><td>{employee.isShared ? `${employee.sharedRatio}%` : '—'}</td><td><span className={`reuse-badge ${employee.isContractor ? 'contractor' : ''}`}>{employee.isContractor ? 'Yes' : 'No'}</span></td><td>{employee.isContractor ? <span className={contractorStatus(employee)?.urgent ? 'expiry-date' : ''}>{employee.maximumEndDate || '—'}{contractorStatus(employee) && <small>{contractorStatus(employee)?.text}</small>}</span> : '—'}</td><td><span className={`reuse-badge ${employee.hasC2C ? 'yes' : ''}`}>{employee.hasC2C ? 'Yes' : 'No'}</span></td><td><div className="row-actions"><button className="edit-button" onClick={() => editEmployee(employee)}>Edit</button><button className="delete-button" onClick={() => deleteEmployee(employee)}>Delete</button></div></td>
                             </tr>)}
                         </tbody></table></div>
                     )}

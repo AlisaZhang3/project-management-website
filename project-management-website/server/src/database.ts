@@ -106,3 +106,10 @@ if (existingCount.count === 0) {
         for (const entity of entities || []) entityStore.create(resource as Resource, entity);
     }
 }
+
+// Existing employee records predate C2C tracking and are explicitly treated as not signed.
+for (const employee of entityStore.list('employees')) {
+    if (typeof employee.hasC2C !== 'boolean') {
+        entityStore.update('employees', employee.id, { hasC2C: false });
+    }
+}
