@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 export interface Project {
@@ -6,25 +6,35 @@ export interface Project {
     projectCode: string;
     name: string;
     pm: string;
+    businessType?: string;
 }
+
+const DEFAULT_BUSINESS_TYPES = ['Data', 'Azure', 'DC', 'Others'];
+const emptyForm = { projectCode: '', name: '', pm: '', businessType: 'Data' };
 
 const ProjectsPage: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
-    const [form, setForm] = useState({ projectCode: '', name: '', pm: '' });
+    const [form, setForm] = useState(emptyForm);
+    const [selectedType, setSelectedType] = useState<string>('All');
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     const openCreateForm = () => {
-        setForm({ projectCode: '', name: '', pm: '' });
+        setForm(emptyForm);
         setEditingId(null);
         setError('');
         setShowForm(true);
     };
 
     const openEditForm = (project: Project) => {
-        setForm({ projectCode: project.projectCode, name: project.name, pm: project.pm });
+        setForm({
+            projectCode: project.projectCode,
+            name: project.name,
+            pm: project.pm,
+            businessType: project.businessType || 'Others',
+        });
         setEditingId(project.id);
         setError('');
         setShowForm(true);
@@ -42,6 +52,26 @@ const ProjectsPage: React.FC = () => {
             .then(() => setLoading(false));
     }, []);
 
+    const filterTypes = useMemo(() => {
+        const types = new Set<string>(['All', ...DEFAULT_BUSINESS_TYPES]);
+        for (const p of projects) {
+            if (p.businessType && p.businessType.trim()) {
+                const matchedDefault = DEFAULT_BUSINESS_TYPES.find(
+                    (t) => t.toLowerCase() === p.businessType?.trim().toLowerCase()
+                );
+                types.add(matchedDefault || p.businessType.trim());
+            }
+        }
+        return Array.from(types);
+    }, [projects]);
+
+    const filteredProjects = useMemo(() => {
+        if (selectedType === 'All') return projects;
+        return projects.filter(
+            (p) => (p.businessType || 'Others').trim().toLowerCase() === selectedType.toLowerCase()
+        );
+    }, [projects, selectedType]);
+
     const submitProject = async (event: FormEvent) => {
         event.preventDefault();
         setError('');
@@ -58,6 +88,7 @@ const ProjectsPage: React.FC = () => {
                     projectCode: form.projectCode.trim(),
                     name: form.name.trim(),
                     pm: form.pm.trim(),
+                    businessType: form.businessType.trim() || 'Others',
                 }),
             });
             if (!response.ok) throw new Error(editingId ? 'Failed to update project' : 'Failed to create project');
@@ -66,7 +97,7 @@ const ProjectsPage: React.FC = () => {
                 ? current.map((item) => item.id === project.id ? project : item)
                 : [...current, project]
             );
-            setForm({ projectCode: '', name: '', pm: '' });
+            setForm(emptyForm);
             setEditingId(null);
             setShowForm(false);
         } catch (err) {
@@ -92,7 +123,7 @@ const ProjectsPage: React.FC = () => {
             if (editingId === project.id) {
                 setEditingId(null);
                 setShowForm(false);
-                setForm({ projectCode: '', name: '', pm: '' });
+                setForm(emptyForm);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete project');
@@ -121,6 +152,21 @@ const ProjectsPage: React.FC = () => {
                     <div className="form-title"><h2>{editingId ? 'Edit Project' : 'Create Project'}</h2><p>The project code must be unique.</p></div>
                     <label>Project Code<input required maxLength={30} value={form.projectCode} onChange={(e) => setForm({ ...form, projectCode: e.target.value })} placeholder="e.g. PRJ-001" /></label>
                     <label>Project Name<input required maxLength={100} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Smart Operations Platform" /></label>
+                    <label>Business Type
+                        <input
+                            required
+                            list="project-business-types"
+                            maxLength={50}
+                            value={form.businessType}
+                            onChange={(e) => setForm({ ...form, businessType: e.target.value })}
+                            placeholder="e.g. Data, Azure, DC, Others"
+                        />
+                        <datalist id="project-business-types">
+                            {DEFAULT_BUSINESS_TYPES.map((type) => (
+                                <option key={type} value={type} />
+                            ))}
+                        </datalist>
+                    </label>
                     <label>Project PM<input required maxLength={50} value={form.pm} onChange={(e) => setForm({ ...form, pm: e.target.value })} placeholder="PM name" /></label>
                     <div className="form-actions"><button className="primary-button" type="submit">{editingId ? 'Save Changes' : 'Save Project'}</button></div>
                 </form>
@@ -128,24 +174,72 @@ const ProjectsPage: React.FC = () => {
 
             <section className="projects-content">
                 <div className="list-header project-list-header">
-                    <div><h2>All Projects</h2><p>{projects.length} project{projects.length === 1 ? '' : 's'}</p></div>
+                    <div>
+                        <h2>{selectedType === 'All' ? 'All Projects' : `${selectedType} Projects`}</h2>
+                        <p>{filteredProjects.length} {filteredProjects.length === 1 ? 'project' : 'projects'} shown (Total {projects.length})</p>
+                    </div>
                     <div className="header-actions">
                         {!!projects.length && <button className="secondary-button" onClick={openCreateForm}>＋ Create Another</button>}
                         {!!projects.length && <Link className="secondary-button" to="/employees">Add Employee →</Link>}
                     </div>
                 </div>
+
+                <div className="business-type-filter-bar">
+                    <span className="filter-label">Business Type:</span>
+                    <div className="filter-pills">
+                        {filterTypes.map((type) => {
+                            const count = type === 'All'
+                                ? projects.length
+                                : projects.filter((p) => (p.businessType || 'Others').trim().toLowerCase() === type.toLowerCase()).length;
+                            const isActive = selectedType.toLowerCase() === type.toLowerCase();
+                            return (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    className={`type-filter-btn ${isActive ? 'active' : ''}`}
+                                    onClick={() => setSelectedType(type)}
+                                >
+                                    <span>{type}</span>
+                                    <b className="type-count">{count}</b>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
                 {error && <div className="notice error">{error}</div>}
                 {loading ? <div className="empty-state">Loading projects…</div> : projects.length === 0 ? (
-                    <div className="empty-state"><span>📋</span><h3>No Projects Yet</h3><p>Click “Create Project” to add a code, name, and PM.</p></div>
+                    <div className="empty-state"><span>📋</span><h3>No Projects Yet</h3><p>Click “Create Project” to add a code, name, PM, and business type.</p></div>
+                ) : filteredProjects.length === 0 ? (
+                    <div className="empty-state">
+                        <span>🔍</span>
+                        <h3>No Projects for “{selectedType}”</h3>
+                        <p>No projects match this business type. You can switch filters or create a new project with this type.</p>
+                        <button className="secondary-button empty-action" type="button" onClick={() => setSelectedType('All')}>View All Projects</button>
+                    </div>
                 ) : (
                     <div className="project-cards">
-                        {projects.map((project) => (
+                        {filteredProjects.map((project) => (
                             <article className="project-item" key={project.id}>
-                                <div className="project-code">{project.projectCode}</div>
+                                <div className="project-item-top">
+                                    <span className="project-code">{project.projectCode}</span>
+                                    <span className={`business-type-tag type-${(project.businessType || 'others').toLowerCase().replace(/[^a-z0-9]/g, '-')}`}>
+                                        {project.businessType || 'Others'}
+                                    </span>
+                                </div>
                                 <h2>{project.name}</h2>
-                                <div className="pm-row"><span>{project.pm.slice(0, 1).toUpperCase()}</span><div><small>PROJECT MANAGER</small><strong>{project.pm}</strong></div></div>
-                                <div className="project-links"><Link to={`/projects/${project.id}/profit`}>View Profitability <b>→</b></Link><Link to={`/employees?project=${project.id}`}>View Employees <b>→</b></Link></div>
-                                <div className="project-actions"><button className="edit-button" onClick={() => openEditForm(project)}>Edit</button><button className="delete-button" onClick={() => deleteProject(project)}>Delete</button></div>
+                                <div className="pm-row">
+                                    <span>{project.pm.slice(0, 1).toUpperCase()}</span>
+                                    <div><small>PROJECT MANAGER</small><strong>{project.pm}</strong></div>
+                                </div>
+                                <div className="project-links">
+                                    <Link to={`/projects/${project.id}/profit`}>View Profitability <b>→</b></Link>
+                                    <Link to={`/employees?project=${project.id}`}>View Employees <b>→</b></Link>
+                                </div>
+                                <div className="project-actions">
+                                    <button className="edit-button" onClick={() => openEditForm(project)}>Edit</button>
+                                    <button className="delete-button" onClick={() => deleteProject(project)}>Delete</button>
+                                </div>
                             </article>
                         ))}
                     </div>

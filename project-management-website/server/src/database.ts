@@ -92,8 +92,8 @@ const existingCount = database.prepare('SELECT COUNT(*) AS count FROM entities')
 if (existingCount.count === 0) {
     const initialData: Partial<Record<Resource, Record<string, unknown>[]>> = {
         projects: [
-            { projectCode: '123', name: 'Test', pm: 'Alisa' },
-            { projectCode: '1234', name: 'Test2', pm: 'Joyce' },
+            { projectCode: '123', name: 'Test', pm: 'Alisa', businessType: 'Data' },
+            { projectCode: '1234', name: 'Test2', pm: 'Joyce', businessType: 'Azure' },
         ],
         employees: [
             { employeeNumber: '1234', name: 'Alisa', region: 'india', salary: 45, projectId: 1, joinDate: '2026-06-01', leaveDate: '', isShared: false, sharedProject: '', sharedRatio: 0, hourlyRate: 35, monthlyWorkingHours: 168, monthlyBill: 5880, monthlyNR: 5442.643835999999, comment: '' },
@@ -104,6 +104,13 @@ if (existingCount.count === 0) {
 
     for (const [resource, entities] of Object.entries(initialData)) {
         for (const entity of entities || []) entityStore.create(resource as Resource, entity);
+    }
+}
+
+// Existing project records predate businessType and are defaulted to Others if missing.
+for (const project of entityStore.list('projects')) {
+    if (typeof project.businessType !== 'string' || !project.businessType) {
+        entityStore.update('projects', project.id, { businessType: 'Others' });
     }
 }
 

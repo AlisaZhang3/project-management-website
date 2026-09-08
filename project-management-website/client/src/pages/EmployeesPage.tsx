@@ -1,5 +1,7 @@
-import React, { FormEvent, useEffect, useState } from 'react';
+import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import { EmployeeImportRow, parseEmployeeImportRows } from '../utils/employeeImport';
 import { Project } from './ProjectsPage';
 
 export interface Employee {
@@ -28,7 +30,9 @@ export interface Employee {
     comment?: string;
 }
 
-type EmployeeForm = Omit<Employee, 'id' | 'c2cContractName' | 'c2cContractUploadedAt' | 'hourlyRate' | 'monthlyWorkingHours' | 'monthlyBill' | 'monthlyNR' | 'monthlyCost' | 'gp2' | 'comment'>;
+type EmployeeForm = Omit<Employee, 'id' | 'c2cContractName' | 'c2cContractUploadedAt' | 'hourlyRate' | 'monthlyBill' | 'monthlyNR' | 'monthlyCost' | 'gp2' | 'comment'> & {
+    monthlyWorkingHours: number;
+};
 
 const emptyForm: EmployeeForm = {
     employeeNumber: '',
@@ -44,6 +48,7 @@ const emptyForm: EmployeeForm = {
     isContractor: false,
     maximumEndDate: '',
     hasC2C: false,
+    monthlyWorkingHours: 168,
 };
 
 export type SalaryCurrency = 'CNY' | 'LPA' | 'PHP' | 'USD';
@@ -83,13 +88,18 @@ const EmployeesPage: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [form, setForm] = useState<EmployeeForm>(emptyForm);
-    const [selectedProject, setSelectedProject] = useState('all');
+    const [selectedProject, setSelectedProject] = useState('');
     const [projectsExpanded, setProjectsExpanded] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [page, setPage] = useState(1);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [c2cContract, setC2CContract] = useState<File | null>(null);
+    const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const importInputRef = useRef<HTMLInputElement | null>(null);
     const location = useLocation();
 
     const loadData = async () => {
@@ -120,10 +130,156 @@ const EmployeesPage: React.FC = () => {
 
     useEffect(() => { loadData(); }, []);
 
-    const visibleEmployees = selectedProject === 'all'
-        ? employees
-        : employees.filter(({ projectId }) => projectId === Number(selectedProject));
+    const employeeSearch = (employee: Employee) => employee.name.toLowerCase().includes(searchTerm.trim().toLowerCase());
+    const hasActiveProject = selectedProject !== '' && selectedProject !== 'all';
+    const projectEmployees = hasActiveProject
+        ? employees.filter(({ projectId }) => projectId === Number(selectedProject))
+        : [];
+    const filteredEmployees = projectEmployees.filter(employeeSearch);
     const getProject = (projectId: number) => projects.find(({ id }) => id === projectId);
+    const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / 15));
+    const pagedEmployees = filteredEmployees.slice((page - 1) * 15, page * 15);
+    const visibleEmployees = pagedEmployees;
+    useEffect(() => { setPage(1); }, [selectedProject, searchTerm]);
+    const projectCodeMap = projects.reduce<Record<string, number>>((map, { projectCode, id }) => {
+        map[projectCode.trim()] = id;
+        return map;
+    }, {});
+    const toggleEmployeeSelection = (employeeId: number) => {
+        setSelectedEmployeeIds((current) => current.indexOf(employeeId) >= 0
+            ? current.filter((id) => id !== employeeId)
+            : [...current, employeeId]);
+    };
+
+    const exportRowsToExcel = (rows: Employee[], fileName: string) => {
+        if (!rows.length) {
+            setError('No employees available to export.');
+            return;
+        }
+
+        const sheetRows = rows.map((employee) => ({
+            employeeNumber: employee.employeeNumber,
+            name: employee.name,
+            region: employee.region,
+            salary: employee.salary,
+            projectCode: getProject(employee.projectId)?.projectCode || '',
+            projectName: getProject(employee.projectId)?.name || '',
+            joinDate: employee.joinDate,
+            leaveDate: employee.leaveDate || '',
+            monthlyWorkingHours: employee.monthlyWorkingHours || 168,
+            isShared: employee.isShared ? 'Yes' : 'No',
+            sharedProject: employee.sharedProject || '',
+            sharedRatio: employee.sharedRatio || 0,
+            isContractor: employee.isContractor ? 'Yes' : 'No',
+            maximumEndDate: employee.maximumEndDate || '',
+            hasC2C: employee.hasC2C ? 'Yes' : 'No',
+        }));
+
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(sheetRows);
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Employees');
+        XLSX.writeFile(workbook, fileName);
+    };
+
+    const downloadTemplate = () => {
+        const workbook = XLSX.utils.book_new();
+        const templateRows = [{
+            employeeNumber: 'E-001',
+            name: 'Alice Chen',
+            region: 'China',
+            salary: 25000,
+            projectCode: 'PRJ-001',
+            joinDate: '2026-01-01',
+            leaveDate: '',
+            monthlyWorkingHours: 168,
+            isShared: 'No',
+            sharedProject: '',
+            sharedRatio: '0',
+            isContractor: 'No',
+            maximumEndDate: '',
+            hasC2C: 'No',
+        }];
+        const worksheet = XLSX.utils.json_to_sheet(templateRows);
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'EmployeeTemplate');
+        XLSX.writeFile(workbook, 'employee-import-template.xlsx');
+    };
+
+    const handleImportEmployees = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        setError('');
+        setSuccess('');
+
+        try {
+            const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const rows: Record<string, string | number>[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+
+            const normalizedRows = rows.map((row) => ({
+                employeeNumber: row.employeeNumber ?? row['Employee ID'] ?? row['Employee Number'] ?? '',
+                name: row.name ?? row.Name ?? '',
+                region: row.region ?? row.Region ?? '',
+                salary: row.salary ?? row.Salary ?? '',
+                projectCode: row.projectCode ?? row['Project Code'] ?? '',
+                joinDate: row.joinDate ?? row['Join Date'] ?? '',
+                leaveDate: row.leaveDate ?? row['Leave Date'] ?? '',
+                monthlyWorkingHours: row.monthlyWorkingHours ?? row['Monthly Working Hours'] ?? 168,
+                isShared: row.isShared ?? row['Is Shared'] ?? '',
+                sharedProject: row.sharedProject ?? row['Shared Project'] ?? '',
+                sharedRatio: row.sharedRatio ?? row['Shared Ratio'] ?? '',
+                isContractor: row.isContractor ?? row['Is Contractor'] ?? '',
+                maximumEndDate: row.maximumEndDate ?? row['Maximum End Date'] ?? '',
+                hasC2C: row.hasC2C ?? row['Has C2C'] ?? '',
+            }));
+
+            const { records, errors } = parseEmployeeImportRows(normalizedRows as EmployeeImportRow[], projectCodeMap);
+            if (errors.length > 0) {
+                setError(errors.slice(0, 5).join(' • '));
+                return;
+            }
+
+            const createdEmployees: Employee[] = [];
+            for (const record of records) {
+                const response = await fetch('/api/employees', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(record),
+                });
+
+                if (!response.ok) {
+                    const message = await response.text();
+                    throw new Error(message || 'Failed to import employee');
+                }
+
+                const employee: Employee = await response.json();
+                createdEmployees.push(employee);
+            }
+
+            setEmployees((current) => [...current, ...createdEmployees]);
+            setSelectedEmployeeIds([]);
+            setSuccess(`Imported ${createdEmployees.length} employee${createdEmployees.length === 1 ? '' : 's'} successfully.`);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to import employees from Excel.');
+        } finally {
+            event.target.value = '';
+        }
+    };
+
+    const selectAllVisibleEmployees = () => {
+        const ids = visibleEmployees.map(({ id }) => id);
+        const allSelected = ids.length > 0 && ids.every((id) => selectedEmployeeIds.indexOf(id) >= 0);
+        setSelectedEmployeeIds((current) => allSelected
+            ? current.filter((id) => ids.indexOf(id) < 0)
+            : Array.from(new Set([...current, ...ids])));
+    };
+
+    const exportSelectedEmployees = () => {
+        const rowsToExport = selectedEmployeeIds.length > 0
+            ? employees.filter(({ id }) => selectedEmployeeIds.indexOf(id) >= 0)
+            : projectEmployees;
+        exportRowsToExcel(rowsToExport, `${getProject(Number(selectedProject))?.projectCode || 'project'}-employees.xlsx`);
+        setSuccess('Exported employee file successfully.');
+    };
 
     const updateField = (field: keyof EmployeeForm, value: string | boolean | number) => {
         setForm((current) => ({ ...current, [field]: value }));
@@ -160,6 +316,7 @@ const EmployeesPage: React.FC = () => {
             isContractor: employee.isContractor || false,
             maximumEndDate: employee.maximumEndDate || '',
             hasC2C: employee.hasC2C || false,
+            monthlyWorkingHours: employee.monthlyWorkingHours || 168,
         });
         setC2CContract(null);
         setEditingId(employee.id);
@@ -186,6 +343,7 @@ const EmployeesPage: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...form,
+                    monthlyWorkingHours: Number(form.monthlyWorkingHours) || 168,
                     sharedProject: form.isShared ? form.sharedProject.trim() : '',
                     sharedRatio: form.isShared ? form.sharedRatio : 0,
                     maximumEndDate: form.isContractor ? form.maximumEndDate : '',
@@ -214,6 +372,7 @@ const EmployeesPage: React.FC = () => {
                 : [...current, employee]
             );
             setSelectedProject(String(employee.projectId));
+            setSearchTerm('');
             setForm(emptyForm);
             setC2CContract(null);
             setEditingId(null);
@@ -263,10 +422,17 @@ const EmployeesPage: React.FC = () => {
                     <h1>Employees</h1>
                     <p className="subtitle">View and maintain employee assignments by project.</p>
                 </div>
-                <button className="primary-button" disabled={!projects.length} title={!projects.length ? 'Create a project first' : ''} onClick={toggleForm}>
-                    {showForm ? 'Cancel' : '＋ Add Employee'}
-                </button>
+                <div className="bulk-actions">
+                    <button className="secondary-button" type="button" onClick={downloadTemplate}>Download Template</button>
+                    <button className="secondary-button" type="button" onClick={() => importInputRef.current?.click()}>Import Excel</button>
+                    <button className="secondary-button" type="button" onClick={exportSelectedEmployees}>Export Selected</button>
+                    <button className="primary-button" disabled={!projects.length} title={!projects.length ? 'Create a project first' : ''} onClick={toggleForm}>
+                        {showForm ? 'Cancel' : '＋ Add Employee'}
+                    </button>
+                </div>
             </section>
+
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleImportEmployees} />
 
             {showForm && (
                 <form className="employee-form" onSubmit={submitEmployee}>
@@ -276,6 +442,7 @@ const EmployeesPage: React.FC = () => {
                     <label>Name<input required value={form.name} onChange={(e) => updateField('name', e.target.value)} placeholder="Employee name" /></label>
                     <label>Country / Region<input required list="employee-regions" value={form.region} onChange={(e) => updateField('region', e.target.value)} placeholder="e.g. China, India, Philippines, USA" /><datalist id="employee-regions"><option value="China" /><option value="India" /><option value="Philippines" /><option value="USA" /></datalist></label>
                     <label>{salaryLabel(form.region)}<input required type="number" min="0" step="0.01" value={form.salary || ''} onChange={(e) => updateField('salary', Number(e.target.value))} placeholder={salaryPlaceholder(form.region)} /></label>
+                    <label>Monthly Working Hours<input required type="number" min="1" step="1" value={form.monthlyWorkingHours || 168} onChange={(e) => updateField('monthlyWorkingHours', Number(e.target.value) || 168)} /></label>
                     <label>Join Date<input required type="date" value={form.joinDate} onChange={(e) => updateField('joinDate', e.target.value)} /></label>
                     <label>Leave Date<input type="date" min={form.joinDate} value={form.leaveDate} onChange={(e) => updateField('leaveDate', e.target.value)} /></label>
                     <label className="check-field"><input type="checkbox" checked={form.isShared} onChange={(e) => updateField('isShared', e.target.checked)} /><span>Shared Resource</span></label>
@@ -298,7 +465,7 @@ const EmployeesPage: React.FC = () => {
                     <h3>Projects</h3>
                     <button className={selectedProject === 'all' ? 'active all-projects-button' : 'all-projects-button'} onClick={() => { setSelectedProject('all'); setProjectsExpanded((value) => !value); }}><span><i className={projectsExpanded ? 'expanded' : ''}>›</i> All Projects</span><b>{employees.length}</b></button>
                     {projectsExpanded && projects.map((project) => (
-                        <button className={selectedProject === String(project.id) ? 'active' : ''} key={project.id} onClick={() => setSelectedProject(String(project.id))}>
+                        <button className={selectedProject === String(project.id) ? 'active' : ''} key={project.id} onClick={() => { setSelectedProject(String(project.id)); setSelectedEmployeeIds([]); }}>
                             <span className="nested-project">{project.name}</span><b>{employees.filter((item) => item.projectId === project.id).length}</b>
                         </button>
                     ))}
@@ -306,17 +473,39 @@ const EmployeesPage: React.FC = () => {
                 </aside>
 
                 <div className="employee-list">
-                    <div className="list-header"><div><h2>{selectedProject === 'all' ? 'All Projects' : getProject(Number(selectedProject))?.name}</h2><p>{visibleEmployees.length} employee{visibleEmployees.length === 1 ? '' : 's'}</p></div></div>
+                    <div className="list-header"><div><h2>{!hasActiveProject ? 'Select a Project' : getProject(Number(selectedProject))?.name}</h2><p>{!hasActiveProject ? 'Choose a project to view employees' : `${filteredEmployees.length} employee${filteredEmployees.length === 1 ? '' : 's'}`}</p></div>
+                        {hasActiveProject && (
+                            <div className="header-actions">
+                                <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search employee name" aria-label="Search employee name" className="employee-search" />
+                                {filteredEmployees.length > 0 && (
+                                    <button className="secondary-button" type="button" onClick={selectAllVisibleEmployees}>
+                                        {pagedEmployees.every(({ id }) => selectedEmployeeIds.indexOf(id) >= 0) ? 'Clear Selection' : 'Select All'}
+                                    </button>
+                                )}
+                                <button className="secondary-button" type="button" onClick={() => exportRowsToExcel(filteredEmployees, `${getProject(Number(selectedProject))?.projectCode || 'project'}-employees.xlsx`)}>Export Project</button>
+                            </div>
+                        )}
+                    </div>
                     {error && <div className="notice error">{error}</div>}
+                    {success && <div className="notice success">{success}</div>}
                     {!projects.length && !loading && <div className="project-required"><strong>Create a Project First</strong><span>A project is required before employees can be added.</span><Link className="primary-button" to="/projects">Create Project</Link></div>}
-                    {loading ? <div className="empty-state">Loading employees…</div> : !projects.length ? null : visibleEmployees.length === 0 ? (
-                        <div className="empty-state"><span>👥</span><h3>No Employees Yet</h3><p>Click “Add Employee” to add the first employee to this project.</p></div>
+                    {loading ? <div className="empty-state">Loading employees…</div> : !projects.length ? null : !hasActiveProject ? (
+                        <div className="empty-state"><span>📌</span><h3>Select a Project</h3><p>Choose a project from the left to view its employee list.</p></div>
+                    ) : filteredEmployees.length === 0 ? (
+                        <div className="empty-state"><span>👥</span><h3>No Matching Employees</h3><p>Try a different employee name or choose another project.</p></div>
                     ) : (
-                        <div className="table-wrap"><table className="employee-table"><thead><tr><th>Employee ID</th><th>Name</th><th>Region</th><th>Salary</th><th>Join Date</th><th>Leave Date</th><th>Project</th><th>Shared</th><th>Shared Project</th><th>Shared Ratio</th><th>Contractor</th><th>Maximum End Date</th><th>C2C</th><th>Action</th></tr></thead><tbody>
-                            {visibleEmployees.map((employee) => <tr className={contractorStatus(employee)?.urgent ? 'contractor-expiring' : ''} key={employee.id}>
-                                <td><Link className="employee-detail-link" to={`/employees/${employee.id}`}><strong>{employee.employeeNumber}</strong></Link></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}>{employee.name}</Link></td><td>{employee.region}</td><td>{displaySalary(employee)}</td><td>{employee.joinDate}</td><td>{employee.leaveDate || '—'}</td><td><span className="project-tag">{getProject(employee.projectId)?.name || 'Unknown Project'}</span></td><td><span className={`reuse-badge ${employee.isShared ? 'yes' : ''}`}>{employee.isShared ? 'Yes' : 'No'}</span></td><td>{employee.isShared ? employee.sharedProject || '—' : '—'}</td><td>{employee.isShared ? `${employee.sharedRatio}%` : '—'}</td><td><span className={`reuse-badge ${employee.isContractor ? 'contractor' : ''}`}>{employee.isContractor ? 'Yes' : 'No'}</span></td><td>{employee.isContractor ? <span className={contractorStatus(employee)?.urgent ? 'expiry-date' : ''}>{employee.maximumEndDate || '—'}{contractorStatus(employee) && <small>{contractorStatus(employee)?.text}</small>}</span> : '—'}</td><td><span className={`reuse-badge ${employee.hasC2C ? 'yes' : ''}`}>{employee.hasC2C ? 'Yes' : 'No'}</span></td><td><div className="row-actions"><button className="edit-button" onClick={() => editEmployee(employee)}>Edit</button><button className="delete-button" onClick={() => deleteEmployee(employee)}>Delete</button></div></td>
-                            </tr>)}
-                        </tbody></table></div>
+                        <div className="table-panel">
+                            <div className="table-wrap"><table className="employee-table"><thead><tr><th><input type="checkbox" checked={pagedEmployees.length > 0 && pagedEmployees.every(({ id }) => selectedEmployeeIds.indexOf(id) >= 0)} onChange={selectAllVisibleEmployees} aria-label="Select all visible employees" /></th><th>Employee ID</th><th>Name</th><th>Region</th><th>Salary</th><th>Join Date</th><th>Leave Date</th><th>Project</th><th>Shared</th><th>Shared Project</th><th>Shared Ratio</th><th>Contractor</th><th>Maximum End Date</th><th>C2C</th><th>Action</th></tr></thead><tbody>
+                                {pagedEmployees.map((employee) => <tr className={contractorStatus(employee)?.urgent ? 'contractor-expiring' : ''} key={employee.id}>
+                                    <td><input type="checkbox" checked={selectedEmployeeIds.indexOf(employee.id) >= 0} onChange={() => toggleEmployeeSelection(employee.id)} aria-label={`Select ${employee.name}`} /></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}><strong>{employee.employeeNumber}</strong></Link></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}>{employee.name}</Link></td><td>{employee.region}</td><td>{displaySalary(employee)}</td><td>{employee.joinDate}</td><td>{employee.leaveDate || '—'}</td><td><span className="project-tag">{getProject(employee.projectId)?.name || 'Unknown Project'}</span></td><td><span className={`reuse-badge ${employee.isShared ? 'yes' : ''}`}>{employee.isShared ? 'Yes' : 'No'}</span></td><td>{employee.isShared ? employee.sharedProject || '—' : '—'}</td><td>{employee.isShared ? `${employee.sharedRatio}%` : '—'}</td><td><span className={`reuse-badge ${employee.isContractor ? 'contractor' : ''}`}>{employee.isContractor ? 'Yes' : 'No'}</span></td><td>{employee.isContractor ? <span className={contractorStatus(employee)?.urgent ? 'expiry-date' : ''}>{employee.maximumEndDate || '—'}{contractorStatus(employee) && <small>{contractorStatus(employee)?.text}</small>}</span> : '—'}</td><td><span className={`reuse-badge ${employee.hasC2C ? 'yes' : ''}`}>{employee.hasC2C ? 'Yes' : 'No'}</span></td><td><div className="row-actions"><button className="edit-button" onClick={() => editEmployee(employee)}>Edit</button><button className="delete-button" onClick={() => deleteEmployee(employee)}>Delete</button></div></td>
+                                </tr>)}
+                            </tbody></table></div>
+                            <div className="pagination-row">
+                                <button className="secondary-button" type="button" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button>
+                                <span>Page {page} / {totalPages}</span>
+                                <button className="secondary-button" type="button" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</button>
+                            </div>
+                        </div>
                     )}
                 </div>
             </section>

@@ -25,6 +25,7 @@ export interface Project {
     endDate?: Date;
     budget: number;
     expenses: number;
+    businessType?: string;
 }
 
 export interface Quotation {

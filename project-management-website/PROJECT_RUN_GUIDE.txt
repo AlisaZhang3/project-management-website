@@ -1,0 +1,74 @@
+Project Management Website
+
+This project is a full-stack web app with:
+- Frontend: React + Vite
+- Backend: Express + TypeScript
+- Database: SQLite (handled by the backend)
+
+Required tools:
+1. Install Node.js 22.5 or newer.
+2. Install npm (comes with Node.js).
+3. Open a terminal or PowerShell window.
+
+Important:
+- The backend runs on port 5000.
+- The frontend runs on port 3000.
+- The frontend requests the backend through the proxy setting in the client config.
+
+Step 1: Open the project folder
+cd path\to\project-management-website
+
+Step 2: Install server dependencies
+cd server
+npm install
+
+Step 3: Start the backend server
+npm start
+
+Wait until the terminal shows that the server is running.
+You should see something like:
+Server is running on port 5000
+
+Keep this terminal open.
+
+Step 4: Open a second terminal
+In the second terminal, go to the client folder:
+cd path\to\project-management-website\client
+
+Step 5: Install client dependencies
+npm install
+
+Step 6: Start the frontend app
+npm start
+
+This starts the Vite development server.
+You should see a local URL such as:
+http://localhost:3000/
+
+Step 7: Open the app in browser
+Open this URL in your browser:
+http://localhost:3000/
+
+If the app loads correctly, the project is running successfully.
+
+Troubleshooting:
+- If the backend does not start, make sure Node.js version is 22.5 or newer.
+- If the frontend cannot connect to the backend, check that the backend terminal is still running.
+- If port 3000 or 5000 is already in use, stop the process using that port and try again.
+- On Windows, you can check active ports with:
+  netstat -ano | findstr :3000
+  netstat -ano | findstr :5000
+
+Optional: Build the frontend for production
+In the client folder:
+cd client
+npm run build
+
+This creates a production build for deployment.
+
+Notes:
+- The backend stores data in SQLite under the server/data folder.
+- The data is persisted and remains available after restarting the server.
+
+If you need to stop the running apps:
+- Press Ctrl + C in each terminal window.

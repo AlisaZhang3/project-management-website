@@ -16,6 +16,7 @@ interface ProfitRow extends Employee {
 type NumericField = 'hourlyRate' | 'monthlyWorkingHours' | 'monthlyBill' | 'monthlyNR' | 'gp2';
 
 const number = (value: unknown) => Number(value) || 0;
+const monthlyHoursOptions = [168, 176, 200];
 const calculateNR = (bill: number) => bill * (1 - 0.02 - 0.05) * (1 - 0.00471);
 const calculateGP = (nr: number, cost: number) => nr ? ((nr - cost) / nr) * 100 : 0;
 const PHP_PER_USD = 58.5;
@@ -63,7 +64,7 @@ const ProjectProfitPage: React.FC = () => {
                 setProject(projectData);
                 setRows(employees.filter((employee) => employee.projectId === projectId).map((employee) => {
                     const hourlyRate = number(employee.hourlyRate);
-                    const monthlyWorkingHours = number(employee.monthlyWorkingHours);
+                    const monthlyWorkingHours = number(employee.monthlyWorkingHours) || 168;
                     const monthlyBill = employee.monthlyBill === undefined ? hourlyRate * monthlyWorkingHours : number(employee.monthlyBill);
                     const monthlyNR = employee.monthlyNR === undefined ? calculateNR(monthlyBill) : number(employee.monthlyNR);
                     const monthlyCost = employeeMonthlyCost(employee);
@@ -106,6 +107,8 @@ const ProjectProfitPage: React.FC = () => {
         setRows((current) => current.map((row) => row.id === employeeId ? { ...row, [field]: value } : row));
     };
 
+    const monthlyHoursSelectValue = (value: number) => (monthlyHoursOptions.indexOf(value) >= 0 ? String(value) : 'custom');
+
     const saveAll = async () => {
         setSaving(true);
         setMessage('');
@@ -140,7 +143,7 @@ const ProjectProfitPage: React.FC = () => {
                 <nav className="page-nav"><Link className="back-link" to="/projects">← Projects</Link><Link className="back-link" to={`/employees?project=${projectId}`}>Project Employees</Link></nav>
             </header>
             <section className="employees-heading profit-heading">
-                <div><p className="eyebrow">PROJECT PROFITABILITY</p><h1>{project?.name || 'Project Profitability'}</h1><p className="subtitle">{project ? `${project.projectCode} · PM ${project.pm}` : 'Loading project...'}</p></div>
+                <div><p className="eyebrow">PROJECT PROFITABILITY</p><h1>{project?.name || 'Project Profitability'}</h1><p className="subtitle">{project ? `${project.projectCode} · ${project.businessType || 'Others'} · PM ${project.pm}` : 'Loading project...'}</p></div>
                 <div className="profit-heading-actions"><div className="formula-note"><strong>All amounts are in USD</strong><span>Monthly NR = Monthly Bill × 93% × 99.529%</span><span>CNY/USD 6.8 · INR/USD 86.5 · PHP/USD {PHP_PER_USD}</span></div>{!!rows.length && <button className="primary-button" disabled={saving} onClick={saveAll}>{saving ? 'Saving…' : 'Save All Changes'}</button>}</div>
             </section>
             <section className="profit-content">
@@ -150,7 +153,20 @@ const ProjectProfitPage: React.FC = () => {
                 ) : <div className="table-wrap"><table className="profit-table"><thead><tr><th>Name</th><th>Hourly rate (USD)</th><th>Monthly working hours</th><th>Monthly Bill (USD)</th><th>Monthly NR (USD)</th><th>Monthly Cost (USD)</th><th>GP2%</th><th>Comment</th></tr></thead><tbody>
                     {rows.map((row) => <tr key={row.id}>
                         <td><input className="name-input" value={row.name} onChange={(event) => updateText(row.id, 'name', event)} /></td>
-                        {(['hourlyRate', 'monthlyWorkingHours', 'monthlyBill', 'monthlyNR'] as NumericField[]).map((field) => <td key={field}><input type="number" min="0" step="0.01" value={Number(row[field].toFixed(2))} onChange={(event) => updateNumber(row.id, field, number(event.target.value))} /></td>)}
+                        <td><input type="number" min="0" step="0.01" value={Number(row.hourlyRate.toFixed(2))} onChange={(event) => updateNumber(row.id, 'hourlyRate', number(event.target.value))} /></td>
+                        <td>
+                            <div className="hours-edit-wrap">
+                                <select value={monthlyHoursSelectValue(row.monthlyWorkingHours)} onChange={(event) => updateNumber(row.id, 'monthlyWorkingHours', event.target.value === 'custom' ? Number(row.monthlyWorkingHours || 168) : Number(event.target.value))}>
+                                    {monthlyHoursOptions.map((option) => (<option key={option} value={option}>{option}</option>))}
+                                    <option value="custom">Custom</option>
+                                </select>
+                                {monthlyHoursSelectValue(row.monthlyWorkingHours) === 'custom' && (
+                                    <input type="number" min="1" step="1" value={Number(row.monthlyWorkingHours || 168)} onChange={(event) => updateNumber(row.id, 'monthlyWorkingHours', number(event.target.value) || 168)} />
+                                )}
+                            </div>
+                        </td>
+                        <td><input type="number" min="0" step="0.01" value={Number(row.monthlyBill.toFixed(2))} onChange={(event) => updateNumber(row.id, 'monthlyBill', number(event.target.value))} /></td>
+                        <td><input type="number" min="0" step="0.01" value={Number(row.monthlyNR.toFixed(2))} onChange={(event) => updateNumber(row.id, 'monthlyNR', number(event.target.value))} /></td>
                         <td><div className="linked-cost" title={costDetails(row)}><span>${money(row.monthlyCost)}</span><small>{row.isShared ? `Salary linked · ${row.sharedRatio || 0}% shared` : 'Salary linked · USD'}</small></div></td>
                         <td><input type="number" min="0" step="0.1" value={Number(row.gp2.toFixed(1))} onChange={(event) => updateNumber(row.id, 'gp2', number(event.target.value))} /></td>
                         <td><input className="comment-input" value={row.comment} placeholder="Add a comment" onChange={(event) => updateText(row.id, 'comment', event)} /></td>
