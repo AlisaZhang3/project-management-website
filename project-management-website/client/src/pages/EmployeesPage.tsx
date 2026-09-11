@@ -1,6 +1,7 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { Eye, EyeOff } from 'lucide-react';
 import { EmployeeImportRow, parseEmployeeImportRows } from '../utils/employeeImport';
 import { Project } from './ProjectsPage';
 
@@ -96,6 +97,7 @@ const EmployeesPage: React.FC = () => {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [c2cContract, setC2CContract] = useState<File | null>(null);
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([]);
+    const [salaryVisibility, setSalaryVisibility] = useState<{ project: string; ids: number[] }>({ project: '', ids: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -136,6 +138,20 @@ const EmployeesPage: React.FC = () => {
         ? employees.filter(({ projectId }) => projectId === Number(selectedProject))
         : [];
     const filteredEmployees = projectEmployees.filter(employeeSearch);
+    const revealedSalaryIds = salaryVisibility.project === selectedProject ? salaryVisibility.ids : [];
+    const allSalariesVisible = projectEmployees.length > 0 && projectEmployees.every(({ id }) => revealedSalaryIds.indexOf(id) >= 0);
+    useEffect(() => { setSalaryVisibility({ project: selectedProject, ids: [] }); }, [selectedProject]);
+    const toggleSalary = (employeeId: number) => {
+        setSalaryVisibility((current) => {
+            const ids = current.project === selectedProject ? current.ids : [];
+            return { project: selectedProject, ids: ids.indexOf(employeeId) >= 0 ? ids.filter((id) => id !== employeeId) : [...ids, employeeId] };
+        });
+    };
+    const renderSalary = (employee: Employee) => {
+        const visible = revealedSalaryIds.indexOf(employee.id) >= 0;
+        const label = `${visible ? 'Hide' : 'Show'} salary for ${employee.name}`;
+        return <div className="employee-salary-cell"><span>{visible ? displaySalary(employee) : '******'}</span><button className="salary-toggle" type="button" title={label} aria-label={label} aria-pressed={visible} onClick={() => toggleSalary(employee.id)}>{visible ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div>;
+    };
     const getProject = (projectId: number) => projects.find(({ id }) => id === projectId);
     const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / 15));
     const pagedEmployees = filteredEmployees.slice((page - 1) * 15, page * 15);
@@ -476,6 +492,10 @@ const EmployeesPage: React.FC = () => {
                     <div className="list-header"><div><h2>{!hasActiveProject ? 'Select a Project' : getProject(Number(selectedProject))?.name}</h2><p>{!hasActiveProject ? 'Choose a project to view employees' : `${filteredEmployees.length} employee${filteredEmployees.length === 1 ? '' : 's'}`}</p></div>
                         {hasActiveProject && (
                             <div className="header-actions">
+                                <button className="secondary-button salary-project-toggle" type="button" disabled={!projectEmployees.length} aria-pressed={allSalariesVisible} title="Toggle salaries for every employee in this project, across all pages" onClick={() => setSalaryVisibility({ project: selectedProject, ids: allSalariesVisible ? [] : projectEmployees.map(({ id }) => id) })}>
+                                    {allSalariesVisible ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                                    {allSalariesVisible ? 'Hide All Salaries' : 'Show All Salaries'}
+                                </button>
                                 <input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search employee name" aria-label="Search employee name" className="employee-search" />
                                 {filteredEmployees.length > 0 && (
                                     <button className="secondary-button" type="button" onClick={selectAllVisibleEmployees}>
@@ -497,7 +517,7 @@ const EmployeesPage: React.FC = () => {
                         <div className="table-panel">
                             <div className="table-wrap"><table className="employee-table"><thead><tr><th><input type="checkbox" checked={pagedEmployees.length > 0 && pagedEmployees.every(({ id }) => selectedEmployeeIds.indexOf(id) >= 0)} onChange={selectAllVisibleEmployees} aria-label="Select all visible employees" /></th><th>Employee ID</th><th>Name</th><th>Region</th><th>Salary</th><th>Join Date</th><th>Leave Date</th><th>Project</th><th>Shared</th><th>Shared Project</th><th>Shared Ratio</th><th>Contractor</th><th>Maximum End Date</th><th>C2C</th><th>Action</th></tr></thead><tbody>
                                 {pagedEmployees.map((employee) => <tr className={contractorStatus(employee)?.urgent ? 'contractor-expiring' : ''} key={employee.id}>
-                                    <td><input type="checkbox" checked={selectedEmployeeIds.indexOf(employee.id) >= 0} onChange={() => toggleEmployeeSelection(employee.id)} aria-label={`Select ${employee.name}`} /></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}><strong>{employee.employeeNumber}</strong></Link></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}>{employee.name}</Link></td><td>{employee.region}</td><td>{displaySalary(employee)}</td><td>{employee.joinDate}</td><td>{employee.leaveDate || '—'}</td><td><span className="project-tag">{getProject(employee.projectId)?.name || 'Unknown Project'}</span></td><td><span className={`reuse-badge ${employee.isShared ? 'yes' : ''}`}>{employee.isShared ? 'Yes' : 'No'}</span></td><td>{employee.isShared ? employee.sharedProject || '—' : '—'}</td><td>{employee.isShared ? `${employee.sharedRatio}%` : '—'}</td><td><span className={`reuse-badge ${employee.isContractor ? 'contractor' : ''}`}>{employee.isContractor ? 'Yes' : 'No'}</span></td><td>{employee.isContractor ? <span className={contractorStatus(employee)?.urgent ? 'expiry-date' : ''}>{employee.maximumEndDate || '—'}{contractorStatus(employee) && <small>{contractorStatus(employee)?.text}</small>}</span> : '—'}</td><td><span className={`reuse-badge ${employee.hasC2C ? 'yes' : ''}`}>{employee.hasC2C ? 'Yes' : 'No'}</span></td><td><div className="row-actions"><button className="edit-button" onClick={() => editEmployee(employee)}>Edit</button><button className="delete-button" onClick={() => deleteEmployee(employee)}>Delete</button></div></td>
+                                    <td><input type="checkbox" checked={selectedEmployeeIds.indexOf(employee.id) >= 0} onChange={() => toggleEmployeeSelection(employee.id)} aria-label={`Select ${employee.name}`} /></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}><strong>{employee.employeeNumber}</strong></Link></td><td><Link className="employee-detail-link" to={`/employees/${employee.id}`}>{employee.name}</Link></td><td>{employee.region}</td><td>{renderSalary(employee)}</td><td>{employee.joinDate}</td><td>{employee.leaveDate || '—'}</td><td><span className="project-tag">{getProject(employee.projectId)?.name || 'Unknown Project'}</span></td><td><span className={`reuse-badge ${employee.isShared ? 'yes' : ''}`}>{employee.isShared ? 'Yes' : 'No'}</span></td><td>{employee.isShared ? employee.sharedProject || '—' : '—'}</td><td>{employee.isShared ? `${employee.sharedRatio}%` : '—'}</td><td><span className={`reuse-badge ${employee.isContractor ? 'contractor' : ''}`}>{employee.isContractor ? 'Yes' : 'No'}</span></td><td>{employee.isContractor ? <span className={contractorStatus(employee)?.urgent ? 'expiry-date' : ''}>{employee.maximumEndDate || '—'}{contractorStatus(employee) && <small>{contractorStatus(employee)?.text}</small>}</span> : '—'}</td><td><span className={`reuse-badge ${employee.hasC2C ? 'yes' : ''}`}>{employee.hasC2C ? 'Yes' : 'No'}</span></td><td><div className="row-actions"><button className="edit-button" onClick={() => editEmployee(employee)}>Edit</button><button className="delete-button" onClick={() => deleteEmployee(employee)}>Delete</button></div></td>
                                 </tr>)}
                             </tbody></table></div>
                             <div className="pagination-row">

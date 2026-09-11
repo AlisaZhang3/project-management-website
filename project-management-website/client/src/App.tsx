@@ -4,6 +4,8 @@ import EmployeesPage from './pages/EmployeesPage';
 import EmployeeDetailPage from './pages/EmployeeDetailPage';
 import ProjectProfitPage from './pages/ProjectProfitPage';
 import ProjectsPage from './pages/ProjectsPage';
+import ClientsPage from './pages/ClientsPage';
+import QuotationsPage from './pages/QuotationsPage';
 import './index.css';
 
 const sections = [
@@ -55,6 +57,8 @@ const App: React.FC = () => (
         <Switch>
             <Route path="/employees/:id" component={EmployeeDetailPage} />
             <Route path="/employees" component={EmployeesPage} />
+            <Route path="/clients" component={ClientsPage} />
+            <Route path="/quotations" component={QuotationsPage} />
             <Route path="/projects/:id/profit" component={ProjectProfitPage} />
             <Route path="/projects" component={ProjectsPage} />
             <Route path="/" component={Home} />

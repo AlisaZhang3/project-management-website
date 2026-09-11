@@ -7,6 +7,8 @@ export interface Project {
     name: string;
     pm: string;
     businessType?: string;
+    clientOrgChartName?: string | null;
+    clientOrgChartUploadedAt?: string | null;
 }
 
 const DEFAULT_BUSINESS_TYPES = ['Data', 'Azure', 'DC', 'Others'];
@@ -235,6 +237,7 @@ const ProjectsPage: React.FC = () => {
                                 <div className="project-links">
                                     <Link to={`/projects/${project.id}/profit`}>View Profitability <b>→</b></Link>
                                     <Link to={`/employees?project=${project.id}`}>View Employees <b>→</b></Link>
+                                    <Link to={`/clients?project=${project.id}`}>View Clients <b>→</b></Link>
                                 </div>
                                 <div className="project-actions">
                                     <button className="edit-button" onClick={() => openEditForm(project)}>Edit</button>

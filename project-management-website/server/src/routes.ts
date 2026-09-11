@@ -7,6 +7,7 @@ import {
     quotationController,
 } from './controllers';
 import { removeC2CContract, removeContractFile, uploadC2CContract, viewC2CContract } from './c2cContracts';
+import { removeClientOrgChart, removeOrgChartFile, uploadClientOrgChart, viewClientOrgChart } from './clientOrgCharts';
 
 const router = Router();
 
@@ -34,9 +35,15 @@ router.delete('/clients/:id', clientController.remove);
 
 router.get('/projects', projectController.getAll);
 router.post('/projects', projectController.create);
+router.put('/projects/:id/client-org-chart', express.raw({ type: () => true, limit: '25mb' }), uploadClientOrgChart);
+router.get('/projects/:id/client-org-chart', viewClientOrgChart);
+router.delete('/projects/:id/client-org-chart', removeClientOrgChart);
 router.get('/projects/:id', projectController.getById);
 router.put('/projects/:id', projectController.update);
-router.delete('/projects/:id', projectController.remove);
+router.delete('/projects/:id', (req, res) => {
+    removeOrgChartFile(Number(req.params.id));
+    projectController.remove(req, res);
+});
 
 router.get('/quotations', quotationController.getAll);
 router.post('/quotations', quotationController.create);

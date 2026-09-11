@@ -120,3 +120,36 @@ for (const employee of entityStore.list('employees')) {
         entityStore.update('employees', employee.id, { hasC2C: false });
     }
 }
+
+// Seed initial client data if clients are empty
+if (entityStore.list('clients').length === 0) {
+    const initialClients = [
+        {
+            projectId: 1,
+            name: 'Sarah Jenkins',
+            title: 'Principal Program Manager',
+            managerLevel: 'VP',
+            region: 'USA',
+            notes: 'Key stakeholder for Data platform migration. Bi-weekly sync on Thursdays.',
+        },
+        {
+            projectId: 1,
+            name: 'David Liu',
+            title: 'Director of Engineering',
+            managerLevel: 'GM',
+            region: 'China',
+            notes: 'Technical decision maker for infrastructure security and compliance.',
+        },
+        {
+            projectId: 2,
+            name: 'Priya Sharma',
+            title: 'Senior Engineering Lead',
+            managerLevel: 'CVP',
+            region: 'India',
+            notes: 'Main contact for Azure cloud integration milestones.',
+        },
+    ];
+    for (const client of initialClients) {
+        entityStore.create('clients', client);
+    }
+}

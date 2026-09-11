@@ -11,10 +11,15 @@ export interface Employee {
 
 export interface Client {
     id: number;
+    projectId: number;
     name: string;
-    contactPerson: string;
-    email: string;
-    phone: string;
+    title: string;
+    managerLevel: string;
+    region: string;
+    notes?: string;
+    contactPerson?: string;
+    email?: string;
+    phone?: string;
 }
 
 export interface Project {
@@ -26,6 +31,8 @@ export interface Project {
     budget: number;
     expenses: number;
     businessType?: string;
+    clientOrgChartName?: string | null;
+    clientOrgChartUploadedAt?: string | null;
 }
 
 export interface Quotation {
