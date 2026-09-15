@@ -17,7 +17,7 @@ interface StoredEntity {
     [key: string]: unknown;
 }
 
-type Resource = 'employees' | 'projects' | 'clients' | 'quotations' | 'invoices';
+type Resource = 'employees' | 'projects' | 'clients' | 'quotations' | 'invoices' | 'reports';
 
 // Node 24 includes a native SQLite driver, so no external database service is required.
 // eslint-disable-next-line @typescript-eslint/no-var-requires

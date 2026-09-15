@@ -317,7 +317,6 @@ const ClientsPage: React.FC = () => {
     return (
         <main className="employees-page clients-page">
             <header>
-                <Link className="brand brand-link" to="/"><span>PM</span> ProjectFlow</Link>
                 <nav className="page-nav">
                     <Link className="back-link" to="/projects">Projects</Link>
                     <Link className="back-link" to="/employees">Employees</Link>

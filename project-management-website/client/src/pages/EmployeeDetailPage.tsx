@@ -36,7 +36,6 @@ const EmployeeDetailPage: React.FC = () => {
     return (
         <main className="employees-page">
             <header>
-                <Link className="brand brand-link" to="/"><span>PM</span> ProjectFlow</Link>
                 <nav className="page-nav"><Link className="back-link" to="/employees">← Employees</Link><Link className="back-link" to="/">Home</Link></nav>
             </header>
             <section className="employees-heading detail-heading">

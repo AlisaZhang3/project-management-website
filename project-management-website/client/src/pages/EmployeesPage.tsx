@@ -428,7 +428,6 @@ const EmployeesPage: React.FC = () => {
     return (
         <main className="employees-page">
             <header>
-                <Link className="brand brand-link" to="/"><span>PM</span> ProjectFlow</Link>
                 <nav className="page-nav"><Link className="back-link" to="/projects">Projects</Link><Link className="back-link" to="/">← Home</Link></nav>
             </header>
 

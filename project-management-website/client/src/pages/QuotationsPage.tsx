@@ -1,11 +1,12 @@
 import React, { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { Project } from './ProjectsPage';
 import { calculateQuotationRow, newQuotationRow, QuotationMode, QuotationRow } from '../utils/quotation';
 
 interface Quotation {
     id: number;
-    projectId: number;
+    projectId: number | string;
     name: string;
     mode: QuotationMode;
     rows: QuotationRow[];
@@ -27,6 +28,11 @@ const QuotationsPage: React.FC = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const currency = mode === 'india' ? 'INR' : 'USD';
+    const projectLabel = (project: Project) => `${project.projectCode} - ${project.name}`;
+    const quotationProjectName = (quotation: Quotation) => {
+        const project = projects.find((item) => item.id === Number(quotation.projectId));
+        return project ? projectLabel(project) : String(quotation.projectId);
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -62,13 +68,87 @@ const QuotationsPage: React.FC = () => {
             return;
         }
         setQuotationId(quotation?.id || null);
-        setProjectId(quotation ? String(quotation.projectId) : '');
+        const quotationProject = quotation && projects.find((project) => project.id === Number(quotation.projectId));
+        setProjectId(quotationProject ? projectLabel(quotationProject) : quotation ? String(quotation.projectId) : '');
         setName(quotation?.name || '');
         setMode(quotation?.mode || 'english');
         setRows(quotation ? quotation.rows.map((row) => ({ ...newQuotationRow(), ...row })) : [newQuotationRow()]);
         setDirty(false);
         setError('');
         setSuccess('');
+    };
+
+    const startNewQuotation = () => openQuotation('');
+
+    const deleteQuotation = async (quotation: Quotation) => {
+        if (!window.confirm(`Delete quotation “${quotation.name || `#${quotation.id}`}”? This action cannot be undone.`)) return;
+        setError('');
+        setSuccess('');
+        try {
+            const response = await fetch(`/api/quotations/${quotation.id}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error('Failed to delete quotation.');
+            setQuotations((current) => current.filter((item) => item.id !== quotation.id));
+            if (quotationId === quotation.id) startNewQuotation();
+            setSuccess('Quotation deleted.');
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : 'Failed to delete quotation.');
+        }
+    };
+
+    const exportQuotation = (quotation: Quotation) => {
+        const quotationCurrency = quotation.mode === 'india' ? 'INR' : 'USD';
+        const quotationRows = Array.isArray(quotation.rows) ? quotation.rows : [];
+        const calculatedRows = quotationRows.map((row) => calculateQuotationRow(row, quotation.mode));
+        const exportTotals = calculatedRows.reduce((sum, row, index) => ({
+            headcount: sum.headcount + quotationRows[index].headcount,
+            monthlyBill: sum.monthlyBill + row.monthlyBill,
+            monthlyNR: sum.monthlyNR + row.monthlyNR,
+            monthlyCost: sum.monthlyCost + row.monthlyCost,
+        }), { headcount: 0, monthlyBill: 0, monthlyNR: 0, monthlyCost: 0 });
+        const exportGP = exportTotals.monthlyNR ? (exportTotals.monthlyNR - exportTotals.monthlyCost) / exportTotals.monthlyNR * 100 : 0;
+        const worksheetRows = quotationRows.map((row, index) => ({
+            'Position Title': row.position,
+            Headcount: row.headcount,
+            [`Hourly Rate (${quotationCurrency})`]: row.hourlyRate,
+            'Monthly Working Hours': row.monthlyWorkingHours,
+            [`Monthly Bill / Person (${quotationCurrency})`]: row.monthlyBill,
+            [`Monthly NR / Total (${quotationCurrency})`]: calculatedRows[index].monthlyNR,
+            [`Monthly Cost / Person (${quotationCurrency})`]: row.costPerPerson,
+            [`Monthly Cost / Total (${quotationCurrency})`]: calculatedRows[index].monthlyCost,
+            'GP2%': `${calculatedRows[index].gp2.toFixed(1)}%`,
+            Comment: row.comment,
+            'Row Number': index + 1,
+        }));
+        worksheetRows.push({
+            'Position Title': 'TOTAL',
+            Headcount: exportTotals.headcount,
+            [`Hourly Rate (${quotationCurrency})`]: 0,
+            'Monthly Working Hours': 0,
+            [`Monthly Bill / Person (${quotationCurrency})`]: exportTotals.monthlyBill,
+            [`Monthly NR / Total (${quotationCurrency})`]: exportTotals.monthlyNR,
+            [`Monthly Cost / Person (${quotationCurrency})`]: 0,
+            [`Monthly Cost / Total (${quotationCurrency})`]: exportTotals.monthlyCost,
+            'GP2%': `${exportGP.toFixed(1)}%`,
+            Comment: 'Overall quotation total',
+            'Row Number': 0,
+        });
+        const worksheet = XLSX.utils.json_to_sheet(worksheetRows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Quotation');
+        const summaryWorksheet = XLSX.utils.json_to_sheet([
+            { Item: 'Quotation Name', Value: quotation.name || `Quotation #${quotation.id}` },
+            { Item: 'Project', Value: quotationProjectName(quotation) },
+            { Item: 'Quotation Type', Value: quotation.mode === 'india' ? 'India (INR)' : 'English (USD)' },
+            { Item: 'Total Headcount', Value: exportTotals.headcount },
+            { Item: `Total Monthly Bill (${quotationCurrency})`, Value: exportTotals.monthlyBill },
+            { Item: `Total Monthly NR (${quotationCurrency})`, Value: exportTotals.monthlyNR },
+            { Item: `Total Monthly Cost (${quotationCurrency})`, Value: exportTotals.monthlyCost },
+            { Item: 'Overall GP2%', Value: `${exportGP.toFixed(1)}%` },
+            { Item: `Overall Gross Profit (${quotationCurrency})`, Value: exportTotals.monthlyNR - exportTotals.monthlyCost },
+        ]);
+        XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Total Summary');
+        const fileName = (quotation.name || `quotation-${quotation.id}`).replace(/[^a-z0-9-_]+/gi, '-').replace(/^-|-$/g, '') || `quotation-${quotation.id}`;
+        XLSX.writeFile(workbook, `${fileName}.xlsx`);
     };
 
     const updateRow = (index: number, field: keyof QuotationRow, value: string | number) => {
@@ -93,11 +173,13 @@ const QuotationsPage: React.FC = () => {
         event.preventDefault();
         setError('');
         setSuccess('');
-        if (!name.trim() || !projects.some((project) => project.id === Number(projectId)) || !rows.length || rows.some((row) =>
+        const selectedProject = projects.find((project) => projectLabel(project) === projectId || project.id === Number(projectId));
+        const projectValue = selectedProject ? selectedProject.id : projectId.trim();
+        if (!name.trim() || !projectValue || !rows.length || rows.some((row) =>
             !row.position.trim() || !Number.isInteger(row.headcount) || row.headcount < 1 || row.monthlyWorkingHours <= 0 ||
             [row.headcount, row.hourlyRate, row.monthlyWorkingHours, row.monthlyBill, row.costPerPerson].some((value) => !Number.isFinite(value) || value < 0)
         )) {
-            setError('Enter a quotation name, project, position titles, positive whole headcounts and hours, and valid non-negative amounts.');
+            setError('Enter a quotation name, choose or enter a project, position titles, positive whole headcounts and hours, and valid non-negative amounts.');
             return;
         }
         setSaving(true);
@@ -105,7 +187,7 @@ const QuotationsPage: React.FC = () => {
             const response = await fetch(quotationId ? `/api/quotations/${quotationId}` : '/api/quotations', {
                 method: quotationId ? 'PUT' : 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name.trim(), projectId: Number(projectId), mode, currency, rows, amount: totals.monthlyNR }),
+                body: JSON.stringify({ name: name.trim(), projectId: projectValue, mode, currency, rows, amount: totals.monthlyNR }),
             });
             if (!response.ok) throw new Error('Failed to save quotation. Your changes are still available to retry.');
             const saved: Quotation = await response.json();
@@ -121,10 +203,33 @@ const QuotationsPage: React.FC = () => {
     return (
         <main className="employees-page quotation-page">
             <header>
-                <Link className="brand brand-link" to="/"><span>PM</span> ProjectFlow</Link>
                 <nav className="page-nav"><Link className="back-link" to="/projects">Projects</Link><Link className="back-link" to="/">Home</Link></nav>
             </header>
             <section className="employees-heading profit-heading"><div><p className="eyebrow">PROJECT QUOTATIONS</p><h1>Quotations</h1></div></section>
+            <section className="quotation-list-panel">
+                <div className="quotation-list-heading">
+                    <div><h2>Saved Quotations</h2><p>{quotations.length} quotation{quotations.length === 1 ? '' : 's'} created</p></div>
+                    <button className="primary-button" type="button" onClick={startNewQuotation}>＋ Create Quotation</button>
+                </div>
+                {loading ? <div className="empty-state">Loading quotations...</div> : quotations.length === 0 ? (
+                    <div className="empty-state quotation-list-empty"><h3>No quotations yet</h3><p>Create your first quotation below.</p></div>
+                ) : (
+                    <div className="quotation-list-table-wrap"><table className="quotation-list-table">
+                        <thead><tr><th>Name</th><th>Project</th><th>Type</th><th>Positions</th><th>Actions</th></tr></thead>
+                        <tbody>{quotations.map((quotation) => <tr key={quotation.id}>
+                            <td>{quotation.name || `Quotation #${quotation.id}`}</td>
+                            <td>{quotationProjectName(quotation)}</td>
+                            <td>{quotation.mode === 'india' ? 'India (INR)' : 'English (USD)'}</td>
+                            <td>{Array.isArray(quotation.rows) ? quotation.rows.length : 0}</td>
+                            <td><div className="row-actions">
+                                <button className="edit-button" type="button" onClick={() => openQuotation(String(quotation.id))}>Edit</button>
+                                <button className="secondary-button" type="button" onClick={() => exportQuotation(quotation)}>Export Excel</button>
+                                <button className="delete-button" type="button" onClick={() => deleteQuotation(quotation)}>Delete</button>
+                            </div></td>
+                        </tr>)}</tbody>
+                    </table></div>
+                )}
+            </section>
             <form className="profit-content quotation-content" onSubmit={saveQuotation}>
                 {error && <div className="notice error" role="alert">{error}</div>}
                 {success && <div className="notice success" role="status">{success}</div>}
@@ -133,10 +238,10 @@ const QuotationsPage: React.FC = () => {
                         <div className="quotation-toolbar">
                             <label>Saved Quotation<select value={quotationId || ''} onChange={(event) => openQuotation(event.target.value)}><option value="">New Quotation</option>{quotations.map((quotation) => <option key={quotation.id} value={quotation.id}>{quotation.name || `Quotation #${quotation.id}`}</option>)}</select></label>
                             <label>Quotation Name<input required maxLength={100} value={name} onChange={(event) => { setName(event.target.value); markDirty(); }} /></label>
-                            <label>Project<select required value={projectId} onChange={(event) => { setProjectId(event.target.value); markDirty(); }}><option value="">Select Project</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.projectCode} - {project.name}</option>)}</select></label>
+                            <label>Project<input required list="quotation-projects" value={projectId} onChange={(event) => { setProjectId(event.target.value); markDirty(); }} placeholder="Choose or enter a project" /><datalist id="quotation-projects">{projects.map((project) => <option key={project.id} value={projectLabel(project)} />)}</datalist></label>
                             <label>Quotation Type<select value={mode} onChange={(event) => { setMode(event.target.value as QuotationMode); markDirty(); }}><option value="english">English (USD)</option><option value="india">India (INR)</option></select></label>
                         </div>
-                        {!projects.length && <div className="notice error"><Link to="/projects">Create a project</Link> before saving a quotation.</div>}
+                        {!projects.length && <div className="notice error">No saved projects found. You can enter a custom project above, or <Link to="/projects">create a project</Link>.</div>}
                         <datalist id="quotation-hours"><option value="168" /><option value="176" /><option value="200" /></datalist>
                         <div className="table-wrap"><table className="profit-table quotation-table">
                             <thead><tr><th>Position Title</th><th>Headcount</th><th>Hourly Rate ({currency})</th><th>Monthly Working Hours</th><th>Monthly Bill / Person ({currency})</th><th>Monthly NR / Total ({currency})</th><th>Monthly Cost / Person ({currency})</th><th>Monthly Cost / Total ({currency})</th><th>GP2%</th><th>Comment</th><th>Action</th></tr></thead>
@@ -156,8 +261,12 @@ const QuotationsPage: React.FC = () => {
                         </table></div>
                         <div className="quotation-actions">
                             <button className="secondary-button" type="button" onClick={() => { setRows((current) => [...current, newQuotationRow()]); markDirty(); }}>Add Position</button>
-                            <button className="secondary-button" type="button" onClick={() => openQuotation('')}>New Quotation</button>
-                            <button className="primary-button" type="submit" disabled={!projects.length || !rows.length}>{saving ? 'Saving...' : 'Save Quotation'}</button>
+                            <button className="secondary-button" type="button" onClick={startNewQuotation}>New Quotation</button>
+                            <button className="secondary-button" type="button" disabled={!quotationId} onClick={() => {
+                                const quotation = quotations.find((item) => item.id === quotationId);
+                                if (quotation) exportQuotation(quotation);
+                            }}>Export Excel</button>
+                            <button className="primary-button" type="submit" disabled={!rows.length}>{saving ? 'Saving...' : 'Save Quotation'}</button>
                         </div>
                     </fieldset>
                 )}

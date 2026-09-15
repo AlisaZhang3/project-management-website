@@ -7,12 +7,19 @@ export interface Project {
     name: string;
     pm: string;
     businessType?: string;
+    startDate?: string;
+    endDate?: string;
+    poNumber?: string;
+    poAmount?: number;
+    sowName?: string | null;
+    sowUploadedAt?: string | null;
+    sowFiles?: { id: string; name: string; size: number; mimeType: string; uploadedAt: string }[];
     clientOrgChartName?: string | null;
     clientOrgChartUploadedAt?: string | null;
 }
 
 const DEFAULT_BUSINESS_TYPES = ['Data', 'Azure', 'DC', 'Others'];
-const emptyForm = { projectCode: '', name: '', pm: '', businessType: 'Data' };
+const emptyForm = { projectCode: '', name: '', pm: '', businessType: 'Data', startDate: '', endDate: '', poNumber: '', poAmount: '' };
 
 const ProjectsPage: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
@@ -36,6 +43,10 @@ const ProjectsPage: React.FC = () => {
             name: project.name,
             pm: project.pm,
             businessType: project.businessType || 'Others',
+            startDate: project.startDate || '',
+            endDate: project.endDate || '',
+            poNumber: project.poNumber || '',
+            poAmount: project.poAmount === undefined ? '' : String(project.poAmount),
         });
         setEditingId(project.id);
         setError('');
@@ -91,6 +102,10 @@ const ProjectsPage: React.FC = () => {
                     name: form.name.trim(),
                     pm: form.pm.trim(),
                     businessType: form.businessType.trim() || 'Others',
+                    startDate: form.startDate,
+                    endDate: form.endDate,
+                    poNumber: form.poNumber.trim(),
+                    poAmount: form.poAmount === '' ? 0 : Number(form.poAmount),
                 }),
             });
             if (!response.ok) throw new Error(editingId ? 'Failed to update project' : 'Failed to create project');
@@ -135,7 +150,6 @@ const ProjectsPage: React.FC = () => {
     return (
         <main className="employees-page">
             <header>
-                <Link className="brand brand-link" to="/"><span>PM</span> ProjectFlow</Link>
                 <Link className="back-link" to="/">← Home</Link>
             </header>
             <section className="employees-heading">
@@ -170,6 +184,10 @@ const ProjectsPage: React.FC = () => {
                         </datalist>
                     </label>
                     <label>Project PM<input required maxLength={50} value={form.pm} onChange={(e) => setForm({ ...form, pm: e.target.value })} placeholder="PM name" /></label>
+                    <label>Project Start Date<input required type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></label>
+                    <label>Project End Date<input required type="date" min={form.startDate} value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} /></label>
+                    <label>PO Number<input required maxLength={50} value={form.poNumber} onChange={(e) => setForm({ ...form, poNumber: e.target.value })} placeholder="e.g. PO-2026-001" /></label>
+                    <label>PO Amount<input required min="0" step="0.01" type="number" value={form.poAmount} onChange={(e) => setForm({ ...form, poAmount: e.target.value })} placeholder="0.00" /></label>
                     <div className="form-actions"><button className="primary-button" type="submit">{editingId ? 'Save Changes' : 'Save Project'}</button></div>
                 </form>
             )}
