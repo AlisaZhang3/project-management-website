@@ -50,6 +50,32 @@ const parseNumber = (value: string | number | undefined): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeDateValue = (value: string | number | undefined): string => {
+  if (value === undefined || value === null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+
+  const asNumber = Number(raw.replace(/,/g, ''));
+  if (Number.isFinite(asNumber) && raw !== '' && /^[\d.]+$/.test(raw)) {
+    const serial = Number(raw);
+    if (serial > 30 && serial < 1000000) {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      const date = new Date(excelEpoch.getTime() + (serial - 1) * 86400000);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toISOString().slice(0, 10);
+      }
+    }
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [day, month, year] = raw.split('/');
+    const pad = (value: string) => value.length === 1 ? `0${value}` : value;
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+  return raw;
+};
+
 export const parseEmployeeImportRows = (
   rows: EmployeeImportRow[],
   projectCodeMap: Record<string, number>,
@@ -65,14 +91,14 @@ export const parseEmployeeImportRows = (
     const salary = parseNumber(row.salary);
     const projectCode = String(row.projectCode ?? '').trim();
     const projectId = projectCodeMap[projectCode];
-    const joinDate = String(row.joinDate ?? '').trim();
-    const leaveDate = String(row.leaveDate ?? '').trim();
+    const joinDate = normalizeDateValue(row.joinDate);
+    const leaveDate = normalizeDateValue(row.leaveDate);
     const monthlyWorkingHours = parseNumber(row.monthlyWorkingHours) || 168;
     const isShared = normalizeBoolean(row.isShared);
     const sharedProject = String(row.sharedProject ?? '').trim();
     const sharedRatio = parseNumber(row.sharedRatio);
     const isContractor = normalizeBoolean(row.isContractor);
-    const maximumEndDate = String(row.maximumEndDate ?? '').trim();
+    const maximumEndDate = normalizeDateValue(row.maximumEndDate);
     const hasC2C = normalizeBoolean(row.hasC2C);
 
     if (!employeeNumber || !name || !region || !projectCode || !joinDate) {
