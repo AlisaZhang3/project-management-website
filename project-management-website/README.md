@@ -67,11 +67,18 @@ project-management-website
 - Access the client application in your web browser at `http://localhost:3000`.
 - Use the provided features to manage employees, clients, projects, quotations, and invoices.
 
+## Local IIS deployment (Windows)
+
+For automatic startup without development terminals, see the [local IIS deployment guide](deployment/IIS_DEPLOYMENT.md).
+The deployment uses IIS for production static files and API reverse proxying, plus a Windows startup task running the compiled Node.js backend as LocalService.
+Run `deployment\deploy-iis.ps1` in an elevated Windows PowerShell after installing IIS, URL Rewrite, and ARR.
+The site is local-only at `http://localhost:8080`; production data and attachments are kept outside the IIS web root and preserved on subsequent deployments.
+
 ## Database
 - The server uses the SQLite database built into Node.js; Node.js 22.5 or newer is required.
-- Data is persisted in `server/data/project-management.db` and remains available after the server restarts.
+- By default, data is persisted in `server/data/project-management.db` and remains available after the server restarts. IIS deployment uses a separate production directory; see the deployment guide above.
 - Project, employee, profitability, client, quotation, and invoice records are all stored in this database.
-- To back up the application, stop the server and copy `server/data/project-management.db`.
+- To back up the application, stop the server and copy its entire active data directory, including the database and uploaded attachments.
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.

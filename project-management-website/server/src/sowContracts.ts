@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { entityStore } from './database';
+import { dataDirectory } from './storage';
 
-const sowDirectory = path.resolve(__dirname, '../data/project-sows');
+const sowDirectory = path.join(dataDirectory, 'project-sows');
 fs.mkdirSync(sowDirectory, { recursive: true });
 
 interface SowFile { id: string; name: string; size: number; mimeType: string; uploadedAt: string; }

@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { entityStore } from './database';
+import { dataDirectory } from './storage';
 
-const orgChartDirectory = path.resolve(__dirname, '../data/client-org-charts');
+const orgChartDirectory = path.join(dataDirectory, 'client-org-charts');
 fs.mkdirSync(orgChartDirectory, { recursive: true });
 
 const orgChartPath = (projectId: number) => {

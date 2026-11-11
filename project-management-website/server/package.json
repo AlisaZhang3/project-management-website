@@ -5,6 +5,8 @@
   "main": "src/app.ts",
   "scripts": {
     "start": "ts-node src/app.ts",
+    "build": "tsc",
+    "start:prod": "node dist/app.js",
     "test": "jest"
   },
   "dependencies": {

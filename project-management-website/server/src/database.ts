@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { dataDirectory } from './storage';
 
 interface Statement {
     all: (...params: unknown[]) => unknown[];
@@ -25,7 +26,6 @@ const { DatabaseSync } = require('node:sqlite') as {
     DatabaseSync: new (filename: string) => SQLiteDatabase;
 };
 
-const dataDirectory = path.resolve(__dirname, '../data');
 fs.mkdirSync(dataDirectory, { recursive: true });
 
 export const databasePath = path.join(dataDirectory, 'project-management.db');

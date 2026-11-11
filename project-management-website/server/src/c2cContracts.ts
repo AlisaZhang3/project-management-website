@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { entityStore } from './database';
+import { dataDirectory } from './storage';
 
-const contractDirectory = path.resolve(__dirname, '../data/c2c-contracts');
+const contractDirectory = path.join(dataDirectory, 'c2c-contracts');
 fs.mkdirSync(contractDirectory, { recursive: true });
 
 const contractPath = (employeeId: number) => path.join(contractDirectory, `${employeeId}.pdf`);

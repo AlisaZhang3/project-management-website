@@ -1,5 +1,13 @@
 Project Management Website
 
+For IIS hosting with automatic startup (no development terminals):
+See deployment\IIS_DEPLOYMENT.md.
+After installing IIS, URL Rewrite and ARR, run deployment\deploy-iis.ps1
+from an Administrator Windows PowerShell. The local site uses:
+http://localhost:8080
+Production data is stored separately in C:\inetpub\ProjectFlow\data.
+The instructions below are for development only.
+
 This project is a full-stack web app with:
 - Frontend: React + Vite
 - Backend: Express + TypeScript
